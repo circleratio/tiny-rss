@@ -8,3 +8,6 @@ dist/
 # Per-user read state
 read.json
 read.json.bak
+
+# Per-user feed list (copy from feeds.example.txt)
+feeds.txt

@@ -19,7 +19,8 @@ GUI（tkinter）と、GUIに依存しないロジック層（設定読み込み�
 rss/
 ├─ pyproject.toml
 ├─ RSSReader.pyw          # ダブルクリック用ランチャー（src を sys.path に追加して main を呼ぶ）
-├─ feeds.txt               # 利用者が編集（サンプルを同梱）
+├─ feeds.example.txt       # サンプル（配布物に含める）
+├─ feeds.txt               # 利用者が作成・編集（.gitignore で除外）
 ├─ doc/
 │  ├─ requirement.md
 │  ├─ spec.md
@@ -85,7 +86,7 @@ def load_feed_urls(path: Path) -> list[str]
 - 各行を `strip()` し、空行・`#` 始まりを除外する。
 - `http://` / `https://` で始まらない行は無視し、警告として呼び出し元に返せるよう `logging.warning` に出す。
 - 重複URLは最初の1件のみ残す（順序維持）。
-- ファイルが存在しない場合は `ConfigError("feeds.txt が見つかりません: <path>")` を送出する。
+- ファイルが存在しない場合は `ConfigError("feeds.txt が見つかりません: <path>（feeds.example.txt をコピーして作成してください）")` を送出する。
 - 有効URLが0件の場合は空リストを返す（メッセージ表示はGUI側）。
 
 ### 3.3 `parser.py`
@@ -192,7 +193,9 @@ class App:
 └────────────────────────────────────────────────────────────┘
 ```
 
-- ウィンドウタイトル `RSS Reader`、初期サイズ 1000×600。列幅: 日時 130px、フィード 160px、タイトルは残り（伸縮）。
+- ウィンドウタイトル `RSS Reader`、初期サイズ 1200×750。
+- 文字サイズ: 定数 `FONT_SIZE = 16`（ポイント）。Tk の標準名前付きフォント `TkDefaultFont` / `TkTextFont` / `TkHeadingFont` / `TkMenuFont` のサイズを変更し、全ウィジェットに反映させる。Treeview の行の高さは自動では追従しないため、`ttk.Style` で `rowheight = フォントの linespace + 8px` を設定する。
+- 列幅はフォントから算出する: 日時 = `"2026-11-08 00:00"` の描画幅 + 余白、フィード = 全角12文字分 + 余白（固定）、タイトルは残り（伸縮）。
 - Treeview の各行の iid は表示中リストのインデックス、値として `Article` を内部の dict で保持する。
 - 既読行は tag `read`（`foreground="gray"`）を付ける。
 - 操作とイベント:

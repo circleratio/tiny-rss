@@ -17,7 +17,9 @@ def load_feed_urls(path: Path) -> list[str]:
     try:
         text = Path(path).read_text(encoding="utf-8-sig")
     except FileNotFoundError:
-        raise ConfigError(f"feeds.txt が見つかりません: {path}") from None
+        raise ConfigError(
+            f"feeds.txt が見つかりません: {path}（feeds.example.txt をコピーして作成してください）"
+        ) from None
     except OSError as e:
         raise ConfigError(f"feeds.txt を読み込めません: {path} ({e})") from None
 

@@ -39,6 +39,7 @@ class LoadFeedUrlsTest(unittest.TestCase):
         with self.assertRaises(ConfigError) as cm:
             load_feed_urls(self.path)
         self.assertIn("feeds.txt が見つかりません", str(cm.exception))
+        self.assertIn("feeds.example.txt", str(cm.exception))
 
     def test_no_valid_urls(self):
         self.write("# only comments\n\n")

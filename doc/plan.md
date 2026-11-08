@@ -21,7 +21,7 @@ S1 雛形 ─┬─ S2 models ─┬─ S3 config ──────────
 - やること
   - spec.md 2章のディレクトリ構成を作成する（`src/rss_reader/`、`tests/fixtures/`）。
   - `pyproject.toml`（spec.md 5章の内容）、`src/rss_reader/__init__.py`（`__version__ = "0.1.0"`）を作成する。
-  - サンプルの `feeds.txt`（requirement.md の使いかた1の内容）を作成する。
+  - サンプルの `feeds.example.txt`（requirement.md の使いかた1の内容）を作成し、`feeds.txt` は `.gitignore` で除外する。
 - 完了条件
   - `$env:PYTHONPATH = "src"; python -c "import rss_reader; print(rss_reader.__version__)"` が `0.1.0` を出力する。
   - テスト実行が「Ran 0 tests」でエラーなく終わる。
@@ -65,7 +65,7 @@ S1 雛形 ─┬─ S2 models ─┬─ S3 config ──────────
 ## S8. gui
 
 - やること: `gui.py` の `App` を実装する（spec.md 3.7）。画面レイアウト、Treeview と既読 tag、クリック・Enter・右クリックメニュー、絞り込み、未読のみ表示、更新（バックグラウンド取得とキュー監視）、すべて既読にする、ステータスバー表示、`report_callback_exception` の設定。
-- 完了条件: 一時スクリプトで `App(tk.Tk(), Path("."))` を生成し、ウィンドウが開いてサンプル `feeds.txt` の記事が表示される。
+- 完了条件: 一時スクリプトで `App(tk.Tk(), Path("."))` を生成し、ウィンドウが開いて `feeds.txt`（`feeds.example.txt` のコピー）の記事が表示される。
 
 ## S9. エントリポイントとランチャー
 
@@ -89,7 +89,8 @@ python -m rss_reader --help;                 $LASTEXITCODE   # ヘルプ / 0
 python -m rss_reader --bogus;                $LASTEXITCODE   # エラー / 2
 python -m rss_reader --data-dir C:\no\such;  $LASTEXITCODE   # エラー / 1
 
-# 通常起動（サンプル feeds.txt を使用）
+# 通常起動（サンプルを feeds.txt としてコピーして使用）
+Copy-Item feeds.example.txt feeds.txt
 python -m rss_reader
 ```
 
@@ -109,7 +110,7 @@ python -m rss_reader
 | 10 | アプリを閉じて再起動 | 既読状態が保持されている（`read.json` が作成されている） |
 | 11 | `feeds.txt` に存在しないURL（例: `https://example.invalid/rss`）を追加して起動 | 他のフィードは表示され、ステータスに失敗1件とURLが出る |
 | 12 | `feeds.txt` を空（コメントのみ）にして起動 | 「有効なURLが登録されていません」と表示される |
-| 13 | `feeds.txt` を削除（または `--data-dir` に空フォルダを指定）して起動 | 「feeds.txt が見つかりません」と表示される |
+| 13 | `feeds.txt` を削除（または `--data-dir` に空フォルダを指定）して起動 | 「feeds.txt が見つかりません（feeds.example.txt をコピーして作成してください）」と表示される |
 | 14 | `read.json` を壊れた内容にして起動 | 「既読情報が壊れていたため初期化しました」と表示され、`read.json.bak` が作られる |
 | 15 | エクスプローラーから `RSSReader.pyw` をダブルクリック | コンソールが出ずに起動し、ルートの `feeds.txt` が使われる |
 

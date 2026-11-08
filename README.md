@@ -23,7 +23,13 @@ rss-reader            # コンソールを出さずに起動（データフォ�
 
 ### 1. フィードを登録する
 
-`feeds.txt` に購読したいフィードの URL を1行に1つずつ書きます。`#` で始まる行はコメント、空行は無視されます。
+同梱のサンプル `feeds.example.txt` を `feeds.txt` という名前でコピーし、購読したいフィードの URL を1行に1つずつ書きます。
+
+```powershell
+Copy-Item feeds.example.txt feeds.txt
+```
+
+`#` で始まる行はコメント、空行は無視されます。
 
 ```text
 # 技術ニュース
@@ -78,8 +84,11 @@ python -m rss_reader --data-dir C:\Users\me\rss   # 別のフォルダの feeds.
 
 | ファイル | 内容 |
 |---|---|
-| `feeds.txt` | 購読するフィードの URL 一覧（手で編集する） |
+| `feeds.example.txt` | `feeds.txt` のサンプル（配布物に同梱） |
+| `feeds.txt` | 購読するフィードの URL 一覧（`feeds.example.txt` をコピーして作り、手で編集する） |
 | `read.json` | 既読にした記事の URL（自動で作成・更新される） |
+
+`feeds.txt` と `read.json` は使う人ごとのファイルなので Git の管理対象外です（`.gitignore` で除外）。
 
 `read.json` を削除すると、すべての記事が未読に戻ります。内容が壊れていた場合は `read.json.bak` に退避され、未読の状態から始まります。
 
@@ -98,7 +107,7 @@ python -m unittest discover -s tests -v
 
 ```
 RSSReader.pyw       ダブルクリック用ランチャー
-feeds.txt           フィード一覧（サンプル）
+feeds.example.txt   フィード一覧のサンプル（feeds.txt にコピーして使う）
 src/rss_reader/     アプリ本体
 tests/              単体テストとフィクスチャ
 doc/                要求仕様・設計・実装計画

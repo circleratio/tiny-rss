@@ -8,6 +8,7 @@ import threading
 import tkinter as tk
 import webbrowser
 from pathlib import Path
+from tkinter import font as tkfont
 from tkinter import ttk
 
 from .config import FEEDS_FILENAME, load_feed_urls
@@ -21,6 +22,11 @@ logger = logging.getLogger(__name__)
 POLL_MS = 100
 MAX_FAILED_URLS_SHOWN = 3
 
+FONT_SIZE = 16  # points
+FONT_NAMES = ("TkDefaultFont", "TkTextFont", "TkHeadingFont", "TkMenuFont")
+ROW_PADDING = 8  # extra pixels per Treeview row
+CELL_PADDING = 12  # horizontal margin per column, in pixels
+
 
 class App:
     def __init__(self, root: tk.Tk, data_dir: Path) -> None:
@@ -32,8 +38,9 @@ class App:
         self._results: queue.Queue[list[FeedResult] | ConfigError] = queue.Queue()
 
         root.title("RSS Reader")
-        root.geometry("1000x600")
+        root.geometry("1200x750")
         root.report_callback_exception = self._report_exception
+        self._configure_fonts()
         self._build_widgets()
 
         # Shown together with the first fetch result so it is not overwritten
@@ -42,6 +49,16 @@ class App:
 
     # ---- layout -----------------------------------------------------------
 
+    def _configure_fonts(self) -> None:
+        # Enlarge Tk's standard named fonts so every widget (incl. menus) follows
+        for name in FONT_NAMES:
+            tkfont.nametofont(name).configure(size=FONT_SIZE)
+        self.font = tkfont.nametofont("TkDefaultFont")
+        # Treeview does not grow its rows with the font; set the height explicitly
+        ttk.Style(self.root).configure(
+            "Treeview", rowheight=self.font.metrics("linespace") + ROW_PADDING
+        )
+
     def _build_widgets(self) -> None:
         bar = ttk.Frame(self.root, padding=(8, 8, 8, 4))
         bar.pack(side=tk.TOP, fill=tk.X)
@@ -49,7 +66,7 @@ class App:
         ttk.Label(bar, text="絞り込み:").pack(side=tk.LEFT)
         self.query = tk.StringVar()
         self.query.trace_add("write", lambda *_: self.apply_filter())
-        entry = ttk.Entry(bar, textvariable=self.query, width=40)
+        entry = ttk.Entry(bar, textvariable=self.query, width=30)
         entry.pack(side=tk.LEFT, padx=(4, 12))
 
         self.unread_only = tk.BooleanVar(value=False)
@@ -74,9 +91,12 @@ class App:
         self.tree.heading("date", text="日時", anchor=tk.W)
         self.tree.heading("feed", text="フィード", anchor=tk.W)
         self.tree.heading("title", text="タイトル", anchor=tk.W)
-        self.tree.column("date", width=130, minwidth=100, stretch=False)
-        self.tree.column("feed", width=160, minwidth=80, stretch=False)
-        self.tree.column("title", width=600, minwidth=200, stretch=True)
+        # Column widths follow the font size
+        date_width = self.font.measure("2026-11-08 00:00") + 2 * CELL_PADDING
+        feed_width = self.font.measure("あ" * 12) + 2 * CELL_PADDING
+        self.tree.column("date", width=date_width, minwidth=date_width, stretch=False)
+        self.tree.column("feed", width=feed_width, minwidth=feed_width // 2, stretch=False)
+        self.tree.column("title", width=feed_width * 4, minwidth=feed_width, stretch=True)
         self.tree.tag_configure("read", foreground="gray")
         scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
