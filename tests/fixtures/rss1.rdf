@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="Shift_JIS"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/"
+         xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel rdf:about="https://example.jp/">
+    <title>サンプルRDF</title>
+    <link>https://example.jp/</link>
+  </channel>
+  <item rdf:about="https://example.jp/r1">
+    <title>記事その1</title>
+    <link>https://example.jp/r1</link>
+    <dc:date>2026-11-08T09:00:00+09:00</dc:date>
+  </item>
+  <item rdf:about="https://example.jp/r2">
+    <title>記事その2</title>
+    <link>https://example.jp/r2</link>
+  </item>
+</rdf:RDF>

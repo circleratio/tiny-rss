@@ -1,0 +1,2 @@
+# Keep fixture bytes (e.g. Shift_JIS) exactly as written
+tests/fixtures/* -text

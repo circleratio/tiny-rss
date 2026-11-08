@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Sample RSS2</title>
+    <link>https://example.com/</link>
+    <item>
+      <title>新型CPU &amp;amp; GPU   発表</title>
+      <link>https://example.com/a1</link>
+      <pubDate>Sun, 08 Nov 2026 12:30:00 +0900</pubDate>
+    </item>
+    <item>
+      <title>dc:date only</title>
+      <link>https://example.com/a2</link>
+      <dc:date>2026-11-07T10:00:00Z</dc:date>
+    </item>
+    <item>
+      <title>No date</title>
+      <link>https://example.com/a3</link>
+    </item>
+    <item>
+      <title>No link</title>
+      <pubDate>Sun, 08 Nov 2026 12:30:00 +0900</pubDate>
+    </item>
+    <item>
+      <link>https://example.com/a5</link>
+    </item>
+  </channel>
+</rss>

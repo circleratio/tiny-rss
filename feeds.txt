@@ -1,0 +1,3 @@
+# 技術ニュース
+https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml
+https://www.publickey1.jp/atom.xml
