@@ -196,6 +196,7 @@ class App:
 - ウィンドウタイトル `RSS Reader`、初期サイズ 1200×750。
 - 文字サイズ: 定数 `FONT_SIZE = 16`（ポイント）。Tk の標準名前付きフォント `TkDefaultFont` / `TkTextFont` / `TkHeadingFont` / `TkMenuFont` のサイズを変更し、全ウィジェットに反映させる。Treeview の行の高さは自動では追従しないため、`ttk.Style` で `rowheight = フォントの linespace + 8px` を設定する。
 - 列幅はフォントから算出する: 日時 = `"2026-11-08 00:00"` の描画幅 + 余白、フィード = 全角12文字分 + 余白（固定）、タイトルは残り（伸縮）。
+- 起動時のフォーカスは Treeview に置く。スペース・BackSpace は Treeview にのみバインドし、絞り込み欄での入力を妨げない。
 - Treeview の各行の iid は表示中リストのインデックス、値として `Article` を内部の dict で保持する。
 - 既読行は tag `read`（`foreground="gray"`）を付ける。
 - 操作とイベント:
@@ -204,6 +205,9 @@ class App:
 |---|---|---|
 | 記事をクリック | `<ButtonRelease-1>`（`identify_region` が `cell` の行のみ。見出しや列境界は対象外） | `webbrowser.open(link)` → `mark_read` → その行に `read` tag を付与（「未読のみ表示」中は一覧を再描画） |
 | Enter キー | `<Return>` | 選択中の記事をクリックと同様に開く |
+| スペースキー | Treeview の `<space>` | `scroll_page(1)`: `yview_scroll(1, "pages")` の後、`yview()[0]` から求めた表示先頭行を選択・フォーカスする。`"break"` を返し既定の処理を抑止 |
+| BackSpace キー | Treeview の `<BackSpace>` | `scroll_page(-1)`: 1ページ前へ。以降は同上 |
+| 絞り込み欄で Esc | Entry の `<Escape>` | 記事一覧にフォーカスを移す |
 | 右クリック | `<Button-3>` | 行を選択し、メニュー「ブラウザで開く」「未読に戻す」を表示 |
 | 絞り込み入力 | `StringVar.trace_add("write")` | `apply_filter` |
 | 未読のみ表示 | `BooleanVar` の command | `apply_filter` |

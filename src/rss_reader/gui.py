@@ -106,12 +106,16 @@ class App:
         self.tree.bind("<ButtonRelease-1>", self._on_click)
         self.tree.bind("<Return>", self._on_return)
         self.tree.bind("<Button-3>", self._on_right_click)
+        # Bound on the list only, so Space/BackSpace still edit the filter entry
+        self.tree.bind("<space>", lambda _e: self.scroll_page(1))
+        self.tree.bind("<BackSpace>", lambda _e: self.scroll_page(-1))
+        entry.bind("<Escape>", lambda _e: self.tree.focus_set())
 
         self.menu = tk.Menu(self.root, tearoff=False)
         self.menu.add_command(label="ブラウザで開く", command=self._open_selected)
         self.menu.add_command(label="未読に戻す", command=self._mark_selected_unread)
 
-        entry.focus_set()
+        self.tree.focus_set()
 
     # ---- feed loading -----------------------------------------------------
 
@@ -207,6 +211,18 @@ class App:
         iid = self.tree.identify_row(event.y)
         if iid:
             self.open_article(iid)
+
+    def scroll_page(self, direction: int) -> str:
+        """Scroll the list by one page (1: forward, -1: back) and select the top row."""
+        self.tree.yview_scroll(direction, "pages")
+        self.tree.update_idletasks()
+        children = self.tree.get_children()
+        if children:
+            # yview()[0] is the fraction of rows scrolled past the top
+            top = children[min(round(self.tree.yview()[0] * len(children)), len(children) - 1)]
+            self.tree.selection_set(top)
+            self.tree.focus(top)
+        return "break"  # suppress the default Treeview key handling
 
     def _on_return(self, _event: tk.Event) -> None:
         self._open_selected()
