@@ -11,7 +11,7 @@ from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import ttk
 
-from .config import FEEDS_FILENAME, load_feed_urls
+from .config import FEEDS_FILENAME, load_feeds
 from .fetcher import fetch_all
 from .filtering import filter_articles, merge_articles, sort_articles
 from .models import Article, ConfigError, FeedResult
@@ -35,7 +35,9 @@ class App:
         self.store = ReadStore(self.data_dir / READ_FILENAME)
         self.articles: list[Article] = []
         self.visible: dict[str, Article] = {}
-        self._results: queue.Queue[list[FeedResult] | ConfigError] = queue.Queue()
+        self._results: queue.Queue[
+            tuple[list[FeedResult], dict[str, tuple[str, ...]]] | ConfigError
+        ] = queue.Queue()
 
         root.title("RSS Reader")
         root.geometry("1200x750")
@@ -129,14 +131,15 @@ class App:
     def _worker(self, feeds_path: Path) -> None:
         # Runs in a background thread: must not touch any widget.
         try:
-            urls = load_feed_urls(feeds_path)
+            feeds = load_feeds(feeds_path)
         except ConfigError as e:
             self._results.put(e)
             return
-        if not urls:
+        if not feeds:
             self._results.put(ConfigError(f"feeds.txt に有効なURLが登録されていません: {feeds_path}"))
             return
-        self._results.put(fetch_all(urls))
+        title_patterns = {f.url: f.title_patterns for f in feeds}
+        self._results.put((fetch_all([f.url for f in feeds]), title_patterns))
 
     def _poll_results(self) -> None:
         try:
@@ -149,8 +152,9 @@ class App:
             self.articles = []
             message = str(result)
         else:
-            self.articles = sort_articles(merge_articles(result))
-            message = self._summary(result)
+            results, title_patterns = result
+            self.articles = sort_articles(merge_articles(results, title_patterns))
+            message = self._summary(results)
         self.apply_filter()
         if self._startup_notice:
             message = f"{self._startup_notice} / {message}"

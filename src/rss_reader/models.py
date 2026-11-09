@@ -15,6 +15,12 @@ class Article:
 
 
 @dataclass(frozen=True)
+class FeedConfig:
+    url: str
+    title_patterns: tuple[str, ...] = ()  # empty means show every article
+
+
+@dataclass(frozen=True)
 class Feed:
     url: str
     title: str

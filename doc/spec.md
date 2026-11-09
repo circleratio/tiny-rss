@@ -58,6 +58,11 @@ class Article:
     feed_title: str
 
 @dataclass(frozen=True)
+class FeedConfig:                  # feeds.txt の1フィード分の設定
+    url: str
+    title_patterns: tuple[str, ...] = ()   # 空なら全記事を表示
+
+@dataclass(frozen=True)
 class Feed:
     url: str
     title: str
@@ -79,13 +84,20 @@ class FeedParseError(RssReaderError): ...
 
 ```python
 FEEDS_FILENAME = "feeds.txt"
-def load_feed_urls(path: Path) -> list[str]
+TITLE_PREFIX = "title:"
+def load_feeds(path: Path) -> list[FeedConfig]
 ```
 
 - UTF-8（BOM付きも可: `utf-8-sig`）で読む。
-- 各行を `strip()` し、空行・`#` 始まりを除外する。
-- `http://` / `https://` で始まらない行は無視し、警告として呼び出し元に返せるよう `logging.warning` に出す。
-- 重複URLは最初の1件のみ残す（順序維持）。
+- 各行を `strip()` した結果が空、または `#` 始まりの行は除外する（インデントの有無を問わない）。
+- 元の行の先頭文字がスペースまたはタブで、かつ `strip()` 後が `http://` / `https://` で始まらない行を「インデント行」、それ以外を「URL行」として扱う（インデントされたURL行を従来どおり有効にするため）。
+- URL行:
+  - `http://` / `https://` で始まらない行は無視し、`logging.warning` に出す。
+  - 重複URLは最初の1件のみ残す（順序維持）。2件目以降の重複URL行と、それに続くインデント行は無視する。
+- インデント行（直前の有効なURL行に属する）:
+  - `strip()` 後に `title:`（大文字・小文字を区別しない）で始まる場合、残りを `strip()` した文字列をそのフィードの `title_patterns` に追加する（記述順を維持）。
+  - 直前に有効なURL行が無い、`title:` 以外で始まる、`title:` の後が空、のいずれかの場合は無視し、`logging.warning` に出す。
+  - 直前のURL行が重複などで無視された場合、そのインデント行も（警告なしで）無視する。
 - ファイルが存在しない場合は `ConfigError("feeds.txt が見つかりません: <path>（feeds.example.txt をコピーして作成してください）")` を送出する。
 - 有効URLが0件の場合は空リストを返す（メッセージ表示はGUI側）。
 
@@ -162,13 +174,19 @@ class ReadStore:
 ### 3.6 `filtering.py`
 
 ```python
-def merge_articles(results: list[FeedResult]) -> list[Article]
+def merge_articles(results: list[FeedResult],
+                   title_patterns: Mapping[str, Sequence[str]] | None = None) -> list[Article]
+def matches_patterns(title: str, patterns: Sequence[str]) -> bool
 def sort_articles(articles: list[Article]) -> list[Article]
 def filter_articles(articles: list[Article], query: str,
                     unread_only: bool, is_read: Callable[[str], bool]) -> list[Article]
 ```
 
 - `merge_articles`: 成功したフィードの記事を結合し、同じ `link` の記事は最初の1件のみ残す。
+  - `title_patterns` はフィードURL（`FeedResult.url`）→ パターン列の対応。パターンが指定されたフィードの記事は `matches_patterns` が真のものだけを残す。対応が無い、またはパターン列が空のフィードは全記事を残す。
+  - パターンによる除外は重複除去より先に行う（フィードAで除外された記事と同じリンクの記事がパターン無しのフィードBにあれば、Bの記事として表示される）。
+- `matches_patterns`: パターン列のいずれかについて `pattern.casefold()` が `title.casefold()` に含まれれば真（OR条件）。パターン列が空なら真。
+- パターンで除外された記事は一覧の元データ（`App.articles`）に入らないため、絞り込み・未読のみ表示・すべて既読にするの対象にもならない。
 - `sort_articles`: `published` の降順。`None` は末尾（その中では元の順序を維持）。
 - `filter_articles`: `query.strip().casefold()` が `title.casefold()` に含まれるものを残す。空文字なら全件。`unread_only` が真なら既読を除外する。
 
@@ -218,7 +236,8 @@ class App:
 - バックグラウンド取得:
   - `refresh_feeds` は「更新」ボタンを無効化し、ステータスを「取得中…」にして `threading.Thread(daemon=True)` で `fetch_all` を実行する。
   - ワーカーは結果を `queue.Queue` に入れるだけで、ウィジェットには触れない（tkinter はスレッドセーフでないため）。
-  - メインスレッドは `root.after(100, ...)` でキューを監視し、結果を受け取ったら `merge_articles` → `sort_articles` → `apply_filter`、ボタンを再度有効化する。
+  - ワーカーは `load_feeds` で得た `FeedConfig` から URL 一覧を `fetch_all` に渡し、取得結果と `{url: title_patterns}` の組をキューに入れる。
+  - メインスレッドは `root.after(100, ...)` でキューを監視し、結果を受け取ったら `merge_articles(results, title_patterns)` → `sort_articles` → `apply_filter`、ボタンを再度有効化する。
 - ステータスバーの表示:
   - 成功時: `N件のフィードを取得しました（失敗 M件）`。失敗があれば `: URL1, URL2 …`（先頭3件まで）を続ける。失敗の詳細は `logging.warning` にも出す。
   - `ConfigError` 時: そのメッセージを表示し、一覧は空。
@@ -253,6 +272,7 @@ def main(argv: list[str] | None = None) -> int
 | 発生箇所 | 元の例外 | 変換先 | 利用者への見え方 |
 |---|---|---|---|
 | config | `FileNotFoundError` | `ConfigError` | ステータスバーにメッセージ |
+| config | 不正なインデント行 | — | ログ出力のみ（行は無視） |
 | fetcher | `HTTPError` / `URLError` / `TimeoutError` / `OSError` | `FeedFetchError` | `FeedResult.error` → ステータスバーに失敗件数とURL |
 | parser | `ParseError` / 未対応ルート | `FeedParseError` | 同上 |
 | readstate 読み込み | `json.JSONDecodeError` / 形式不一致 | — | `.bak` に退避し `load_warning` を表示 |
@@ -272,9 +292,9 @@ def main(argv: list[str] | None = None) -> int
 ## 6. テスト方針
 
 - フレームワークは標準の `unittest`（`python -m unittest discover -s tests`）。ネットワークには接続しない。
-- `test_config.py`: コメント・空行・前後空白・BOM・非HTTP行・重複の扱い、ファイル無しで `ConfigError`、有効0件で空リスト。
+- `test_config.py`: コメント・空行・前後空白・BOM・非HTTP行・重複の扱い、ファイル無しで `ConfigError`、有効0件で空リスト。インデント行の `title:` パターン（スペース/タブのインデント、複数行、前後空白、`TITLE:` の大文字）、パターン無しのフィードは空タプル、無視されるインデント行（URL行より前、`title:` 以外、`title:` の後が空、インデントされた `#` コメント、重複URL行に続く行）。
 - `test_parser.py`: RSS 2.0 / RSS 1.0（Shift_JIS）/ Atom の各フィクスチャからフィード名・記事数・タイトル・リンク・日時が取れること。EUC-JP の変換、未知の文字コードで `FeedParseError`。Atom の複数 link から alternate を選ぶこと、相対リンクの絶対化、HTMLエンティティの展開、リンク無し記事の除外、`file:` / `javascript:` / `ftp:` など http(s) 以外のリンクの除外、壊れたXMLと未対応ルートで `FeedParseError`。`parse_date` は RFC 822（タイムゾーン有り/無し）、ISO 8601（`Z`/オフセット/日付のみ）、不正文字列で `None`。
 - `test_fetcher.py`: `urlopen` を `unittest.mock.patch` で差し替え、正常時のバイト列取得、HTTPError/URLError/タイムアウトの `FeedFetchError` 変換、`fetch_all` が一部失敗でも全件の `FeedResult` を入力順で返すこと。
 - `test_readstate.py`: 一時フォルダでの保存→再読み込み、未読に戻す、ファイル無しで空開始、壊れたJSONで `.bak` 退避と `load_warning` 設定。
-- `test_filtering.py`: 重複リンクの除去、日時降順と `None` の末尾配置、大文字小文字を区別しない部分一致、空クエリで全件、未読のみ表示との併用。
+- `test_filtering.py`: 重複リンクの除去、日時降順と `None` の末尾配置、大文字小文字を区別しない部分一致、空クエリで全件、未読のみ表示との併用。フィードごとの表示パターン（一致する記事のみ残る、複数パターンのOR、大文字小文字無視、パターン無しのフィードに影響しない、除外された記事と同じリンクが別フィードにあれば残る）。
 - GUI（`gui.py`）は単体テストの対象外とし、実装計画の手動動作確認で requirement.md の使いかたと突き合わせる。

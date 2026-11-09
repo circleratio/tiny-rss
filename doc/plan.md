@@ -123,3 +123,63 @@ python -m rss_reader
 - テスト実行で全件成功することを確認する。
 - requirement.md の「要求仕様」の各項目を1つずつ読み、S10 の確認結果またはテストのどれで担保されたかを対応付け、漏れがないことを確認する。
 - `__pycache__` など生成物を削除する（`Get-ChildItem -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force`）。
+
+## 追加機能: フィードごとの表示パターン
+
+requirement.md「フィードごとの表示パターン」、spec.md 3.1・3.2・3.6・3.7 に対応する。
+
+```
+F1 models ─┬─ F2 config ────┐
+           └─ F3 filtering ─┴─ F4 gui ─ F5 サンプル・ドキュメント ─ F6 手動動作確認 ─ F7 最終確認
+```
+
+- F2 と F3 は互いに独立しており並行して実装できる。F4 は F2・F3 の両方に依存する。
+
+### F1. models
+
+- やること: `models.py` に `FeedConfig(url, title_patterns)` を追加する。
+- 完了条件: `python -c "from rss_reader.models import FeedConfig; print(FeedConfig('https://a/'))"` が成功する。
+
+### F2. config
+
+- やること: `load_feed_urls` を `load_feeds`（`list[FeedConfig]` を返す）に置き換え、インデント行の `title:` パターンを解釈する。`tests/test_config.py` を新しい関数に合わせて更新し、spec.md 6章のケースを追加する。
+- 完了条件: `test_config` が全件成功する。
+
+### F3. filtering
+
+- やること: `matches_patterns` を追加し、`merge_articles` に `title_patterns` 引数を追加する。`tests/test_filtering.py` に spec.md 6章のケースを追加する。
+- 完了条件: `test_filtering` が全件成功する（既存テストも引数省略で従来どおり成功する）。
+
+### F4. gui
+
+- やること: `_worker` で `load_feeds` を使い、取得結果とパターンの対応をキューに入れる。`_poll_results` で `merge_articles` にパターンを渡す。
+- 完了条件: F6 の確認項目を満たす。
+
+### F5. サンプル・ドキュメント
+
+- やること: `feeds.example.txt` にパターン指定の記述例（コメントアウトした状態）を追加する。README.md の「フィードを登録する」にパターン指定の説明を追加する。
+- 完了条件: `feeds.example.txt` をそのままコピーした `feeds.txt` で `load_feeds` がパターン無しの2件を返す。
+
+### F6. 手動動作確認
+
+`feeds.txt` に次の形で追記して起動する。URLは実在するフィードに、パターンはそのフィードの現在の記事タイトルに含まれる文字列（連載名など）に置き換える。
+
+```text
+https://magazine.example.net/feed/
+    title:週末レシピ
+```
+
+| # | 操作 | 期待結果 |
+|---|---|---|
+| P1 | 起動する | 対象フィードの記事はタイトルにパターンを含むものだけが表示される。他のフィードの記事は従来どおり全件表示される |
+| P2 | `title:` 行を2行（別のパターン）にして起動 | いずれかのパターンを含む記事が表示される |
+| P3 | `title:` 行を削除して起動 | 対象フィードの全記事が表示される |
+| P4 | 絞り込み欄に入力・「すべて既読にする」 | パターンで除外された記事は表示されず、既読にもならない |
+
+GUI を起動できない環境では、`load_feeds` → `fetch_all` → `merge_articles` を一時スクリプトで実行し、上記 P1〜P3 に相当する結果を確認する。
+
+### F7. 最終確認
+
+- テスト実行で全件成功することを確認する。
+- requirement.md「フィードごとの表示パターン」の各項目を、F6 の確認結果またはテストに対応付けて漏れがないことを確認する。
+- `__pycache__` など生成物を削除する。

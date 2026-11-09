@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from rss_reader.filtering import filter_articles, merge_articles, sort_articles
+from rss_reader.filtering import filter_articles, matches_patterns, merge_articles, sort_articles
 from rss_reader.models import Article, Feed, FeedResult
 
 
@@ -19,6 +19,33 @@ class MergeTest(unittest.TestCase):
             FeedResult("f3", Feed("f3", "F3", [dup]), None),
         ]
         self.assertEqual(merge_articles(results), [a1, a2])
+
+    def test_title_patterns_apply_only_to_their_feed(self):
+        hit, miss, other = art("【週末レシピ】第1回", "u1"), art("新型CPU", "u2"), art("新型CPU", "u3")
+        results = [
+            FeedResult("f1", Feed("f1", "F1", [hit, miss]), None),
+            FeedResult("f2", Feed("f2", "F2", [other]), None),
+        ]
+        self.assertEqual(merge_articles(results, {"f1": ("週末レシピ",)}), [hit, other])
+
+    def test_excluded_link_survives_from_unfiltered_feed(self):
+        a, b = art("other", "u1"), art("other", "u1")
+        results = [
+            FeedResult("f1", Feed("f1", "F1", [a]), None),
+            FeedResult("f2", Feed("f2", "F2", [b]), None),
+        ]
+        merged = merge_articles(results, {"f1": ("series",), "f2": ()})
+        self.assertEqual(len(merged), 1)
+        self.assertIs(merged[0], b)
+
+
+class MatchesPatternsTest(unittest.TestCase):
+    def test_any_pattern_case_insensitive(self):
+        self.assertTrue(matches_patterns("Hello World", ("xyz", "WORLD")))
+        self.assertFalse(matches_patterns("Hello World", ("xyz", "abc")))
+
+    def test_no_patterns_matches_everything(self):
+        self.assertTrue(matches_patterns("anything", ()))
 
 
 class SortTest(unittest.TestCase):
