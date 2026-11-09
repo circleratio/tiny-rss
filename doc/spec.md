@@ -110,7 +110,8 @@ def parse_date(text: str | None) -> datetime | None
   - 上記以外のルートは `FeedParseError("未対応のフィード形式です")`。
 - タイトルは `html.unescape` した後、連続空白を1つにまとめる。空なら `(無題)`。
 - フィード名が取れない場合はフィードURLのホスト名を使う。
-- リンクが空の記事は開けず既読管理もできないため除外する。リンクは `urljoin(url, link)` で絶対URLにする。
+- リンクは `urljoin(url, link)` で絶対URLにする。リンクが空の記事、および絶対URLのスキームが `http` / `https` 以外またはホストが空の記事は除外する（定数 `ALLOWED_SCHEMES`）。
+  - 理由: Windows の `webbrowser.open` は `os.startfile` を経由するため、`file:` や他のスキームのURLを渡すとローカルのファイルやプログラムが起動しうる。`Article.link` は parser でのみ生成されるため、ここで制限すれば GUI に安全なURLだけが渡る。
 - `parse_date`:
   1. `email.utils.parsedate_to_datetime`（RFC 822 形式）を試す。
   2. 失敗したら末尾 `Z` を `+00:00` に置換して `datetime.fromisoformat`（ISO 8601 / W3CDTF）を試す。
@@ -272,7 +273,7 @@ def main(argv: list[str] | None = None) -> int
 
 - フレームワークは標準の `unittest`（`python -m unittest discover -s tests`）。ネットワークには接続しない。
 - `test_config.py`: コメント・空行・前後空白・BOM・非HTTP行・重複の扱い、ファイル無しで `ConfigError`、有効0件で空リスト。
-- `test_parser.py`: RSS 2.0 / RSS 1.0（Shift_JIS）/ Atom の各フィクスチャからフィード名・記事数・タイトル・リンク・日時が取れること。EUC-JP の変換、未知の文字コードで `FeedParseError`。Atom の複数 link から alternate を選ぶこと、相対リンクの絶対化、HTMLエンティティの展開、リンク無し記事の除外、壊れたXMLと未対応ルートで `FeedParseError`。`parse_date` は RFC 822（タイムゾーン有り/無し）、ISO 8601（`Z`/オフセット/日付のみ）、不正文字列で `None`。
+- `test_parser.py`: RSS 2.0 / RSS 1.0（Shift_JIS）/ Atom の各フィクスチャからフィード名・記事数・タイトル・リンク・日時が取れること。EUC-JP の変換、未知の文字コードで `FeedParseError`。Atom の複数 link から alternate を選ぶこと、相対リンクの絶対化、HTMLエンティティの展開、リンク無し記事の除外、`file:` / `javascript:` / `ftp:` など http(s) 以外のリンクの除外、壊れたXMLと未対応ルートで `FeedParseError`。`parse_date` は RFC 822（タイムゾーン有り/無し）、ISO 8601（`Z`/オフセット/日付のみ）、不正文字列で `None`。
 - `test_fetcher.py`: `urlopen` を `unittest.mock.patch` で差し替え、正常時のバイト列取得、HTTPError/URLError/タイムアウトの `FeedFetchError` 変換、`fetch_all` が一部失敗でも全件の `FeedResult` を入力順で返すこと。
 - `test_readstate.py`: 一時フォルダでの保存→再読み込み、未読に戻す、ファイル無しで空開始、壊れたJSONで `.bak` 退避と `load_warning` 設定。
 - `test_filtering.py`: 重複リンクの除去、日時降順と `None` の末尾配置、大文字小文字を区別しない部分一致、空クエリで全件、未読のみ表示との併用。

@@ -49,7 +49,7 @@ S1 雛形 ─┬─ S2 models ─┬─ S3 config ──────────
 - 完了条件
   - `test_fetcher` が全件成功する。
   - 実ネットワークで1件取得できることを確認する:
-    `$env:PYTHONPATH = "src"; python -c "from rss_reader.fetcher import fetch_feed; r = fetch_feed('https://www.publickey1.jp/atom.xml'); print(r.error, r.feed and (r.feed.title, len(r.feed.articles)))"`
+    `$env:PYTHONPATH = "src"; python -c "from rss_reader.fetcher import fetch_feed; r = fetch_feed('<実在するフィードのURL>'); print(r.error, r.feed and (r.feed.title, len(r.feed.articles)))"`
     がエラー `None` とフィード名・記事数を出力する。
 
 ## S6. readstate
@@ -89,7 +89,7 @@ python -m rss_reader --help;                 $LASTEXITCODE   # ヘルプ / 0
 python -m rss_reader --bogus;                $LASTEXITCODE   # エラー / 2
 python -m rss_reader --data-dir C:\no\such;  $LASTEXITCODE   # エラー / 1
 
-# 通常起動（サンプルを feeds.txt としてコピーして使用）
+# 通常起動（feeds.example.txt を feeds.txt にコピーし、架空のURLを実在するフィードのURLに書き換えて使用）
 Copy-Item feeds.example.txt feeds.txt
 python -m rss_reader
 ```

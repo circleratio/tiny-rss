@@ -32,10 +32,13 @@ Copy-Item feeds.example.txt feeds.txt
 `#` で始まる行はコメント、空行は無視されます。
 
 ```text
-# 技術ニュース
-https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml
-https://www.publickey1.jp/atom.xml
+# ニュース
+https://news.example.com/rss.xml
+# ブログ
+https://blog.example.org/atom.xml
 ```
+
+上の URL は架空の例です。実際に購読したいフィードの URL に書き換えてください。
 
 RSS 2.0 / RSS 1.0 (RDF) / Atom に対応しています。文字コードは UTF-8 のほか Shift_JIS・EUC-JP なども扱えます。
 
@@ -62,9 +65,9 @@ python -m rss_reader --data-dir C:\Users\me\rss   # 別のフォルダの feeds.
 ```text
 [絞り込み: ____________]  [□ 未読のみ表示]            [更新]  [すべて既読にする]
 日時              フィード              タイトル
-2026-11-09 00:09  Publickey             ターミナル用ライブラリ［Libghostty 1.0」リリース…
-2026-11-08 13:32  ITmedia 総合記事一覧  [ITmedia Mobile] ドコモがahamoサイトの…
-2026-11-08 10:00  ITmedia 総合記事一覧  （既読の記事はグレーで表示）
+2026-11-09 00:09  サンプルブログ        クラウド移行の手引き…
+2026-11-08 13:32  サンプルニュース      新型CPUを発表…
+2026-11-08 10:00  サンプルニュース      （既読の記事はグレーで表示）
 --------------------------------------------------------------------------------
 2件のフィードを取得しました（失敗 0件）
 ```
@@ -79,6 +82,8 @@ python -m rss_reader --data-dir C:\Users\me\rss   # 別のフォルダの feeds.
 | 「未読のみ表示」をオン | 既読の記事を隠す |
 | 「更新」 | 全フィードを再取得する（起動時にも自動で取得） |
 | 「すべて既読にする」 | 表示中の記事をまとめて既読にする（ブラウザは開かない） |
+
+記事のリンクが `http://` / `https://` 以外（`file:` など）の記事は、安全のため一覧に表示しません。
 
 取得に失敗したフィードがあると、画面下のステータスバーに失敗件数と URL が表示されます。他のフィードの記事は通常どおり表示されます。
 
@@ -120,3 +125,7 @@ doc/                要求仕様・設計・実装計画
 - [要求仕様](doc/requirement.md)
 - [設計](doc/spec.md)
 - [実装計画](doc/plan.md)
+
+## ライセンス
+
+[MIT License](LICENSE)

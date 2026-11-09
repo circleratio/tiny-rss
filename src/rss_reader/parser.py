@@ -20,6 +20,7 @@ NS = {
 }
 
 UNTITLED = "(無題)"
+ALLOWED_SCHEMES = ("http", "https")
 
 _WS_RE = re.compile(r"\s+")
 _DECL_RE = re.compile(rb"""^\s*<\?xml[^>]*?(\s+encoding\s*=\s*["']([A-Za-z0-9._-]+)["'])""")
@@ -106,7 +107,15 @@ def _text(elem: ET.Element | None) -> str:
 
 def _abs_link(base: str, link: str) -> str:
     link = link.strip()
-    return urljoin(base, link) if link else ""
+    if not link:
+        return ""
+    absolute = urljoin(base, link)
+    # Only web links are allowed: on Windows webbrowser.open() goes through
+    # os.startfile(), so file:/UNC/other schemes could launch local programs.
+    parsed = urlparse(absolute)
+    if parsed.scheme.lower() not in ALLOWED_SCHEMES or not parsed.netloc:
+        return ""
+    return absolute
 
 
 def _parse_rss2(root: ET.Element, url: str):

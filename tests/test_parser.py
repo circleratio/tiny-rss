@@ -106,6 +106,24 @@ class ParseErrorTest(unittest.TestCase):
             load("unknown_root.xml", "https://example.com/")
         self.assertIn("未対応", str(cm.exception))
 
+    def test_non_web_links_are_dropped(self):
+        links = [
+            "file:///C:/Windows/System32/calc.exe",
+            r"\\attacker.example\share\x.exe",
+            "javascript:alert(1)",
+            "ms-settings:privacy",
+            "ftp://files.example/a",
+            "https://ok.example/a",
+            "HTTP://ok.example/b",
+        ]
+        items = "".join(f"<item><title>t</title><link>{link}</link></item>" for link in links)
+        data = f'<rss version="2.0"><channel><title>T</title>{items}</channel></rss>'.encode()
+        feed = parse_feed(data, "https://h.example/rss")
+        result = [a.link for a in feed.articles]
+        # A UNC path is relative in URL terms, so it is resolved under the feed's https host
+        self.assertEqual(result[0], "https://h.example/\\\\attacker.example\\share\\x.exe")
+        self.assertEqual(result[1:], ["https://ok.example/a", "HTTP://ok.example/b"])
+
     def test_missing_feed_title_uses_hostname(self):
         data = b'<rss version="2.0"><channel><item><link>https://h.example/1</link></item></channel></rss>'
         feed = parse_feed(data, "https://h.example/rss")

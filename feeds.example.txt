@@ -1,3 +1,8 @@
-# 技術ニュース
-https://rss.itmedia.co.jp/rss/2.0/itmedia_all.xml
-https://www.publickey1.jp/atom.xml
+# feeds.txt のサンプル。このファイルを feeds.txt にコピーし、
+# 下の架空のURLを購読したいフィードのURLに書き換えてください。
+# 1行に1つのURL。# で始まる行はコメント、空行は無視されます。
+
+# ニュース
+https://news.example.com/rss.xml
+# ブログ
+https://blog.example.org/atom.xml
