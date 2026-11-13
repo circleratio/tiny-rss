@@ -8,4 +8,10 @@ sys.path.insert(0, str(HERE / "src"))
 
 from rss_reader.__main__ import main  # noqa: E402
 
-sys.exit(main(["--data-dir", str(HERE)]))
+# Prefer pythonw.exe so a pinned taskbar icon starts without a console
+_exe = Path(sys.executable)
+_pythonw = _exe.with_name("pythonw.exe")
+if not _pythonw.exists():
+    _pythonw = _exe
+
+sys.exit(main(["--data-dir", str(HERE)], relaunch_command=f'"{_pythonw}" "{Path(__file__).resolve()}"'))

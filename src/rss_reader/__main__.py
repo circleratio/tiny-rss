@@ -26,7 +26,13 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, relaunch_command: str | None = None) -> int:
+    """Run the app.
+
+    relaunch_command: command line the taskbar should use when the window is
+    pinned (e.g. pythonw.exe plus the launcher script). When omitted, the
+    taskbar identity is left as Windows decides.
+    """
     args = build_parser().parse_args(argv)
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
@@ -38,10 +44,15 @@ def main(argv: list[str] | None = None) -> int:
     # Import tkinter lazily so --help/--version work without a display
     import tkinter as tk
 
+    from . import taskbar
     from .gui import App
 
+    if relaunch_command:
+        taskbar.set_process_app_id()
     root = tk.Tk()
     App(root, data_dir)
+    if relaunch_command:
+        taskbar.set_window_relaunch(root, relaunch_command, icon=f"{sys.executable},0")
     root.mainloop()
     return 0
 

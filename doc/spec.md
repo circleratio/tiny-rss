@@ -35,7 +35,8 @@ rss/
 │     ├─ fetcher.py        # HTTP取得・並列化
 │     ├─ readstate.py      # 既読情報の永続化
 │     ├─ filtering.py      # 絞り込み・並べ替え
-│     └─ gui.py            # tkinter 画面
+│     ├─ gui.py            # tkinter 画面
+│     └─ taskbar.py        # タスクバー連携（AppUserModelID・再起動コマンド）
 └─ tests/
    ├─ fixtures/            # rss2.xml, rss1.rdf, atom.xml, broken.xml など
    ├─ test_config.py
@@ -265,7 +266,12 @@ def main(argv: list[str] | None = None) -> int
 
 - `logging.basicConfig(level=WARNING)` で標準エラーへ出力する（`.pyw` 起動時は捨てられる）。
 - ランチャー名はパッケージ名と別にする（`rss_reader.pyw` だとプロジェクト直下で `import rss_reader` がランチャーを拾ってしまうため）。
-- `RSSReader.pyw` は自身のフォルダの `src` を `sys.path` に追加し、`--data-dir` に自身のフォルダを渡して `main` を呼ぶ。
+- `RSSReader.pyw` は自身のフォルダの `src` を `sys.path` に追加し、`--data-dir` に自身のフォルダを渡して `main` を呼ぶ。あわせて `relaunch_command`（`"<pythonw.exe>" "<RSSReader.pyw の絶対パス>"`）を渡す。
+- タスクバー連携（`taskbar.py`。`main` に `relaunch_command` が渡されたときのみ行う）
+  - 背景: 何もしないとウィンドウは `pythonw.exe` としてグループ化され、ピン留めすると引数なしの `pythonw.exe` が登録される。Windows はこれを同じ実行ファイルを指すスタートメニューの IDLE ショートカットと同一視するため、ピン留めから IDLE が起動してしまう。
+  - `Tk()` 生成前に `SetCurrentProcessExplicitAppUserModelID("circleratio.RSSReader")` でプロセスに固有の AppUserModelID を与える。
+  - ウィンドウ生成後、`SHGetPropertyStoreForWindow` で取得したプロパティストアに `System.AppUserModel.RelaunchCommand`・`RelaunchIconResource`（`<python 実行ファイル>,0`）・`RelaunchDisplayNameResource`（`RSS Reader`）・`ID` を設定する。ピン留め時はこのコマンドが登録される。
+  - 設定に失敗してもログ出力のみで起動は継続する。Windows 以外では何もしない。
 
 ## 4. エラーハンドリング方針
 
