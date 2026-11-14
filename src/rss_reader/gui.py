@@ -27,6 +27,15 @@ FONT_NAMES = ("TkDefaultFont", "TkTextFont", "TkHeadingFont", "TkMenuFont")
 ROW_PADDING = 8  # extra pixels per Treeview row
 CELL_PADDING = 12  # horizontal margin per column, in pixels
 
+# Dark palette: the white Windows pointer stands out against it
+BG = "#1E2228"
+FG = "#E3E5E8"
+READ_FG = "#8B929C"
+SELECT_BG = "#2D4F7C"
+SURFACE = "#2A2F37"  # headings, buttons, entry, scrollbar
+BORDER = "#3A414B"
+ACTIVE = "#353B45"  # hovered buttons and headings
+
 
 class App:
     def __init__(self, root: tk.Tk, data_dir: Path) -> None:
@@ -43,6 +52,8 @@ class App:
         root.title("RSS Reader")
         root.geometry("1200x750")
         root.report_callback_exception = self._report_exception
+        # Theme first: style settings are stored per theme
+        self._configure_colors()
         self._configure_fonts()
         self._build_widgets()
 
@@ -57,10 +68,46 @@ class App:
         for name in FONT_NAMES:
             tkfont.nametofont(name).configure(size=FONT_SIZE)
         self.font = tkfont.nametofont("TkDefaultFont")
+        style = ttk.Style(self.root)
+        linespace = self.font.metrics("linespace")
         # Treeview does not grow its rows with the font; set the height explicitly
-        ttk.Style(self.root).configure(
-            "Treeview", rowheight=self.font.metrics("linespace") + ROW_PADDING
+        style.configure("Treeview", rowheight=linespace + ROW_PADDING)
+        # Likewise the check box indicator keeps a fixed size
+        style.configure("TCheckbutton", indicatorsize=linespace * 2 // 3)
+
+    def _configure_colors(self) -> None:
+        style = ttk.Style(self.root)
+        # The native "vista" theme ignores most color options; "clam" honors them
+        style.theme_use("clam")
+        style.configure(
+            ".",
+            background=BG,
+            foreground=FG,
+            fieldbackground=SURFACE,
+            bordercolor=BORDER,
+            lightcolor=SURFACE,
+            darkcolor=SURFACE,
+            troughcolor=BG,
+            selectbackground=SELECT_BG,
+            selectforeground=FG,
+            insertcolor=FG,
         )
+        style.map(".", background=[("disabled", BG)], foreground=[("disabled", READ_FG)])
+        style.configure("Treeview", background=BG, fieldbackground=BG, foreground=FG)
+        style.map("Treeview", background=[("selected", SELECT_BG)], foreground=[("selected", FG)])
+        style.configure("Treeview.Heading", background=SURFACE, foreground=FG)
+        style.map("Treeview.Heading", background=[("active", ACTIVE)])
+        style.configure("TButton", background=SURFACE)
+        style.map("TButton", background=[("disabled", BG), ("active", ACTIVE)])
+        style.configure("TCheckbutton", indicatorbackground=SURFACE, indicatorforeground=FG)
+        style.map(
+            "TCheckbutton",
+            background=[("active", BG)],
+            indicatorbackground=[("pressed", ACTIVE), ("active", ACTIVE)],
+        )
+        style.configure("Vertical.TScrollbar", background=SURFACE, arrowcolor=FG)
+        style.map("Vertical.TScrollbar", background=[("active", ACTIVE)])
+        self.root.configure(background=BG)
 
     def _build_widgets(self) -> None:
         bar = ttk.Frame(self.root, padding=(8, 8, 8, 4))
@@ -100,7 +147,7 @@ class App:
         self.tree.column("date", width=date_width, minwidth=date_width, stretch=False)
         self.tree.column("feed", width=feed_width, minwidth=feed_width // 2, stretch=False)
         self.tree.column("title", width=feed_width * 4, minwidth=feed_width, stretch=True)
-        self.tree.tag_configure("read", foreground="gray")
+        self.tree.tag_configure("read", foreground=READ_FG)
         scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -114,7 +161,14 @@ class App:
         self.tree.bind("<BackSpace>", lambda _e: self.scroll_page(-1))
         entry.bind("<Escape>", lambda _e: self.tree.focus_set())
 
-        self.menu = tk.Menu(self.root, tearoff=False)
+        self.menu = tk.Menu(
+            self.root,
+            tearoff=False,
+            background=SURFACE,
+            foreground=FG,
+            activebackground=SELECT_BG,
+            activeforeground=FG,
+        )
         self.menu.add_command(label="ブラウザで開く", command=self._open_selected)
         self.menu.add_command(label="未読に戻す", command=self._mark_selected_unread)
 

@@ -219,11 +219,24 @@ class App:
 ```
 
 - ウィンドウタイトル `RSS Reader`、初期サイズ 1200×750。
-- 文字サイズ: 定数 `FONT_SIZE = 16`（ポイント）。Tk の標準名前付きフォント `TkDefaultFont` / `TkTextFont` / `TkHeadingFont` / `TkMenuFont` のサイズを変更し、全ウィジェットに反映させる。Treeview の行の高さは自動では追従しないため、`ttk.Style` で `rowheight = フォントの linespace + 8px` を設定する。
+- 文字サイズ: 定数 `FONT_SIZE = 16`（ポイント）。Tk の標準名前付きフォント `TkDefaultFont` / `TkTextFont` / `TkHeadingFont` / `TkMenuFont` のサイズを変更し、全ウィジェットに反映させる。Treeview の行の高さは自動では追従しないため、`ttk.Style` で `rowheight = フォントの linespace + 8px` を設定する。チェックボックスの印も同様に `indicatorsize = linespace × 2/3` を設定する。
+- 配色: `vista` テーマは色指定の大半を無視するため、`ttk.Style.theme_use("clam")` に切り替えてから色を指定する。スタイル設定はテーマごとに保持されるので、テーマ切り替えはフォント設定より先に行う。色は定数で持つ。
+
+  | 定数 | 値 | 用途 |
+  |---|---|---|
+  | `BG` | `#1E2228` | 背景（ウィンドウ・一覧） |
+  | `FG` | `#E3E5E8` | 文字（未読） |
+  | `READ_FG` | `#8B929C` | 既読行の文字・無効状態の文字 |
+  | `SELECT_BG` | `#2D4F7C` | 選択行・メニューのハイライト |
+  | `SURFACE` | `#2A2F37` | 見出し・ボタン・入力欄・スクロールバー・メニュー |
+  | `BORDER` | `#3A414B` | 枠線 |
+  | `ACTIVE` | `#353B45` | マウスが乗ったボタン・見出し |
+
+  背景とのコントラスト比は、`FG` が 12.7:1、`READ_FG` が 5.1:1。右クリックメニュー（`tk.Menu`）は ttk の対象外なので、生成時に色を指定する。
 - 列幅はフォントから算出する: 日時 = `"2026-11-08 00:00"` の描画幅 + 余白、フィード = 全角12文字分 + 余白（固定）、タイトルは残り（伸縮）。
 - 起動時のフォーカスは Treeview に置く。スペース・BackSpace は Treeview にのみバインドし、絞り込み欄での入力を妨げない。
 - Treeview の各行の iid は表示中リストのインデックス、値として `Article` を内部の dict で保持する。
-- 既読行は tag `read`（`foreground="gray"`）を付ける。
+- 既読行は tag `read`（`foreground=READ_FG`）を付ける。
 - 操作とイベント:
 
 | 操作 | バインド | 動作 |
