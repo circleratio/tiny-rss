@@ -72,7 +72,7 @@ class App:
         entry = ttk.Entry(bar, textvariable=self.query, width=30)
         entry.pack(side=tk.LEFT, padx=(4, 12))
 
-        self.unread_only = tk.BooleanVar(value=False)
+        self.unread_only = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             bar, text="未読のみ表示", variable=self.unread_only, command=self.apply_filter
         ).pack(side=tk.LEFT)
