@@ -18,6 +18,7 @@ class Article:
 class FeedConfig:
     url: str
     title_patterns: tuple[str, ...] = ()  # empty means show every article
+    exclude_patterns: tuple[str, ...] = ()  # hide articles whose title contains any of these
 
 
 @dataclass(frozen=True)

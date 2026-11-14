@@ -94,11 +94,41 @@ class LoadFeedsTest(unittest.TestCase):
         self.write("https://a.example/\nhttps://a.example/\n  title:x\n")
         self.assertEqual(load_feeds(self.path), [FeedConfig("https://a.example/", ())])
 
+    def test_exclude_patterns(self):
+        self.write(
+            "https://a.example/rss\n"
+            "    !title:PR\n"
+            "\t!TITLE:  広告  \n"
+            "    title:週末レシピ\n"
+            "https://b.example/rss\n"
+        )
+        self.assertEqual(
+            load_feeds(self.path),
+            [
+                FeedConfig("https://a.example/rss", ("週末レシピ",), ("PR", "広告")),
+                FeedConfig("https://b.example/rss", (), ()),
+            ],
+        )
+
+    def test_ignores_invalid_exclude_lines(self):
+        self.write(
+            "  !title:orphan\n"
+            "https://a.example/\n"
+            "  !title:   \n"
+            "  ! title:spaced\n"
+            "  !keyword:foo\n"
+            "  !title:ok\n"
+        )
+        with self.assertLogs("rss_reader.config", level="WARNING") as cm:
+            feeds = load_feeds(self.path)
+        self.assertEqual(feeds, [FeedConfig("https://a.example/", (), ("ok",))])
+        self.assertEqual(len(cm.output), 4)
+
     def test_example_file_has_no_active_patterns(self):
         example = Path(__file__).resolve().parent.parent / "feeds.example.txt"
         feeds = load_feeds(example)
         self.assertEqual(len(feeds), 2)
-        self.assertTrue(all(f.title_patterns == () for f in feeds))
+        self.assertTrue(all(f.title_patterns == () and f.exclude_patterns == () for f in feeds))
 
 
 if __name__ == "__main__":

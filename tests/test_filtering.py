@@ -39,6 +39,20 @@ class MergeTest(unittest.TestCase):
         self.assertIs(merged[0], b)
 
 
+    def test_exclude_patterns_apply_only_to_their_feed(self):
+        pr, ad, keep, other = art("【PR】新製品", "u1"), art("広告のお知らせ", "u2"), art("新型CPU", "u3"), art("PR特集", "u4")
+        results = [
+            FeedResult("f1", Feed("f1", "F1", [pr, ad, keep]), None),
+            FeedResult("f2", Feed("f2", "F2", [other]), None),
+        ]
+        self.assertEqual(merge_articles(results, exclude_patterns={"f1": ("pr", "広告")}), [keep, other])
+
+    def test_exclude_wins_over_title_patterns(self):
+        hit, excluded, miss = art("週末レシピ 第1回", "u1"), art("週末レシピ PR版", "u2"), art("新型CPU", "u3")
+        results = [FeedResult("f1", Feed("f1", "F1", [hit, excluded, miss]), None)]
+        merged = merge_articles(results, {"f1": ("週末レシピ",)}, {"f1": ("PR",)})
+        self.assertEqual(merged, [hit])
+
 class MatchesPatternsTest(unittest.TestCase):
     def test_any_pattern_case_insensitive(self):
         self.assertTrue(matches_patterns("Hello World", ("xyz", "WORLD")))

@@ -8,6 +8,13 @@
 # https://magazine.example.net/feed/
 #     title:週末レシピ
 #     title:旅コラム
+#
+# 「!title:文字列」と書くと、タイトルにその文字列を含む記事を表示しません
+# （複数行書くといずれかを含む記事を除外。title: と併用すると除外が優先）。
+# 例:
+# https://tech.example.jp/rss
+#     !title:PR
+#     !title:広告
 
 # ニュース
 https://news.example.com/rss.xml

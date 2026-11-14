@@ -36,7 +36,8 @@ class App:
         self.articles: list[Article] = []
         self.visible: dict[str, Article] = {}
         self._results: queue.Queue[
-            tuple[list[FeedResult], dict[str, tuple[str, ...]]] | ConfigError
+            tuple[list[FeedResult], dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]]
+            | ConfigError
         ] = queue.Queue()
 
         root.title("RSS Reader")
@@ -139,7 +140,8 @@ class App:
             self._results.put(ConfigError(f"feeds.txt に有効なURLが登録されていません: {feeds_path}"))
             return
         title_patterns = {f.url: f.title_patterns for f in feeds}
-        self._results.put((fetch_all([f.url for f in feeds]), title_patterns))
+        exclude_patterns = {f.url: f.exclude_patterns for f in feeds}
+        self._results.put((fetch_all([f.url for f in feeds]), title_patterns, exclude_patterns))
 
     def _poll_results(self) -> None:
         try:
@@ -152,8 +154,8 @@ class App:
             self.articles = []
             message = str(result)
         else:
-            results, title_patterns = result
-            self.articles = sort_articles(merge_articles(results, title_patterns))
+            results, title_patterns, exclude_patterns = result
+            self.articles = sort_articles(merge_articles(results, title_patterns, exclude_patterns))
             message = self._summary(results)
         self.apply_filter()
         if self._startup_notice:

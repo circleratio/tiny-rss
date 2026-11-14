@@ -10,20 +10,26 @@ from .models import Article, FeedResult
 def merge_articles(
     results: list[FeedResult],
     title_patterns: Mapping[str, Sequence[str]] | None = None,
+    exclude_patterns: Mapping[str, Sequence[str]] | None = None,
 ) -> list[Article]:
     """Concatenate articles of successful feeds, dropping duplicate links.
 
-    Articles of a feed with title patterns are kept only if they match one.
+    Articles of a feed with title patterns are kept only if they match one,
+    and articles matching any of the feed's exclude patterns are dropped.
     """
     title_patterns = title_patterns or {}
+    exclude_patterns = exclude_patterns or {}
     seen: set[str] = set()
     merged: list[Article] = []
     for result in results:
         if result.feed is None:
             continue
         patterns = title_patterns.get(result.url, ())
+        excludes = exclude_patterns.get(result.url, ())
         for article in result.feed.articles:
             if not matches_patterns(article.title, patterns):
+                continue
+            if excludes and matches_patterns(article.title, excludes):
                 continue
             if article.link in seen:
                 continue

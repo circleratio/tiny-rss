@@ -183,3 +183,63 @@ GUI を起動できない環境では、`load_feeds` → `fetch_all` → `merge_
 - テスト実行で全件成功することを確認する。
 - requirement.md「フィードごとの表示パターン」の各項目を、F6 の確認結果またはテストに対応付けて漏れがないことを確認する。
 - `__pycache__` など生成物を削除する。
+
+## 追加機能: フィードごとの除外パターン（`!title:`）
+
+requirement.md「フィードごとの表示パターン」の除外パターン、spec.md 3.1・3.2・3.6・3.7 に対応する。
+
+```
+X1 models ─┬─ X2 config ────┐
+           └─ X3 filtering ─┴─ X4 gui ─ X5 サンプル・ドキュメント ─ X6 手動動作確認 ─ X7 最終確認
+```
+
+- X2 と X3 は互いに独立しており並行して実装できる。X4 は X2・X3 の両方に依存する。
+
+### X1. models
+
+- やること: `FeedConfig` に `exclude_patterns: tuple[str, ...] = ()` を追加する。
+- 完了条件: 既存テストが全件成功する（既定値により既存の生成箇所は変更不要）。
+
+### X2. config
+
+- やること: `EXCLUDE_TITLE_PREFIX = "!title:"` を追加し、インデント行の `!title:` を `exclude_patterns` として解釈する。`tests/test_config.py` に spec.md 6章のケースを追加する。
+- 完了条件: `test_config` が全件成功する。
+
+### X3. filtering
+
+- やること: `merge_articles` に `exclude_patterns` 引数を追加する。`tests/test_filtering.py` に spec.md 6章のケースを追加する。
+- 完了条件: `test_filtering` が全件成功する（既存テストも引数省略で従来どおり成功する）。
+
+### X4. gui
+
+- やること: `_worker` で `{url: exclude_patterns}` もキューに入れ、`_poll_results` で `merge_articles` に渡す。
+- 完了条件: X6 の確認項目を満たす。
+
+### X5. サンプル・ドキュメント
+
+- やること: `feeds.example.txt` に `!title:` の記述例（コメントアウトした状態）を追加する。README.md の「フィードごとに表示する記事を絞る」に除外パターンの説明を追加する。
+- 完了条件: `feeds.example.txt` をそのままコピーした `feeds.txt` で `load_feeds` がパターン無しの2件を返す。
+
+### X6. 手動動作確認
+
+`feeds.txt` に次の形で追記して起動する。URLは実在するフィードに、キーワードはそのフィードの現在の記事タイトルに含まれる文字列に置き換える。
+
+```text
+https://tech.example.jp/rss
+    !title:PR
+```
+
+| # | 操作 | 期待結果 |
+|---|---|---|
+| E1 | 起動する | 対象フィードの記事のうち、タイトルにキーワードを含むものが表示されない。他のフィードの記事は従来どおり表示される |
+| E2 | `!title:` 行を2行（別のキーワード）にして起動 | いずれかのキーワードを含む記事が表示されない |
+| E3 | 同じフィードに `title:` 行を追加して起動 | `title:` に一致し、かつ `!title:` に一致しない記事だけが表示される |
+| E4 | `!title:` 行を削除して起動 | 除外されていた記事が再び表示される |
+
+GUI を起動できない環境では、`load_feeds` → `fetch_all` → `merge_articles` を一時スクリプトで実行し、上記 E1〜E3 に相当する結果を確認する。
+
+### X7. 最終確認
+
+- テスト実行で全件成功することを確認する。
+- requirement.md の除外パターンの各項目を、X6 の確認結果またはテストに対応付けて漏れがないことを確認する。
+- `__pycache__` など生成物を削除する。
