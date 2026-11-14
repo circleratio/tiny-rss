@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 
-from .models import Article, FeedResult
+from .models import Article, Category, FeedResult
 
 
 def merge_articles(
@@ -68,3 +68,24 @@ def filter_articles(
         if (not needle or needle in a.title.casefold())
         and not (unread_only and is_read(a.link))
     ]
+
+
+def articles_by_category(
+    categories: list[Category], results: list[FeedResult]
+) -> list[tuple[str, list[Article]]]:
+    """Return ``(category name, sorted articles)`` for each category, in order.
+
+    Each category uses its own feeds' patterns, so a URL listed in two
+    categories may show different articles in each.
+    """
+    by_url = {r.url: r for r in results}
+    tabs: list[tuple[str, list[Article]]] = []
+    for category in categories:
+        feeds = [f for f in category.feeds if f.url in by_url]
+        merged = merge_articles(
+            [by_url[f.url] for f in feeds],
+            {f.url: f.title_patterns for f in feeds},
+            {f.url: f.exclude_patterns for f in feeds},
+        )
+        tabs.append((category.name, sort_articles(merged)))
+    return tabs

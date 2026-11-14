@@ -2,12 +2,21 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from rss_reader.config import load_feeds
-from rss_reader.models import ConfigError, FeedConfig
+from rss_reader.config import UNCATEGORIZED, load_categories, unique_urls
+from rss_reader.models import Category, ConfigError, FeedConfig
+
+
+def load_feeds(path):
+    """Feeds of all categories, flattened in order."""
+    return [f for c in load_categories(path) for f in c.feeds]
 
 
 def urls(path):
     return [f.url for f in load_feeds(path)]
+
+
+def names(path):
+    return [c.name for c in load_categories(path)]
 
 
 class LoadFeedsTest(unittest.TestCase):
@@ -41,7 +50,7 @@ class LoadFeedsTest(unittest.TestCase):
 
     def test_missing_file(self):
         with self.assertRaises(ConfigError) as cm:
-            load_feeds(self.path)
+            load_categories(self.path)
         self.assertIn("feeds.txt が見つかりません", str(cm.exception))
         self.assertIn("feeds.example.txt", str(cm.exception))
 
@@ -126,9 +135,112 @@ class LoadFeedsTest(unittest.TestCase):
 
     def test_example_file_has_no_active_patterns(self):
         example = Path(__file__).resolve().parent.parent / "feeds.example.txt"
+        self.assertEqual(names(example), ["ニュース", "趣味"])
         feeds = load_feeds(example)
-        self.assertEqual(len(feeds), 2)
+        self.assertEqual(len(feeds), 4)
         self.assertTrue(all(f.title_patterns == () and f.exclude_patterns == () for f in feeds))
+
+
+class CategoriesTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.path = Path(self._tmp.name) / "feeds.txt"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write(self, text: str):
+        self.path.write_text(text, encoding="utf-8")
+
+    def test_headers_split_categories(self):
+        self.write(
+            "# 技術ニュース\n"
+            "https://a.example/\n"
+            "https://b.example/\n"
+            "\n"
+            "##  サブカル  \n"
+            "https://c.example/\n"
+        )
+        self.assertEqual(
+            load_categories(self.path),
+            [
+                Category("技術ニュース", (FeedConfig("https://a.example/"), FeedConfig("https://b.example/"))),
+                Category("サブカル", (FeedConfig("https://c.example/"),)),
+            ],
+        )
+
+    def test_categories_without_urls_are_dropped(self):
+        self.write("# 説明のコメント\n# もう1行\n# ニュース\nhttps://a.example/\n# 空の分類\n")
+        self.assertEqual(names(self.path), ["ニュース"])
+
+    def test_bare_hash_is_not_a_header(self):
+        self.write("# ニュース\n#\n#   \nhttps://a.example/\n")
+        self.assertEqual(names(self.path), ["ニュース"])
+
+    def test_indented_hash_is_a_comment(self):
+        self.write("# ニュース\nhttps://a.example/\n    # メモ\n    title:x\nhttps://b.example/\n")
+        self.assertEqual(
+            load_categories(self.path),
+            [Category("ニュース", (FeedConfig("https://a.example/", ("x",)), FeedConfig("https://b.example/")))],
+        )
+
+    def test_same_name_categories_are_merged_at_first_position(self):
+        self.write("# A\n# B\nhttps://b.example/\n# A\nhttps://a.example/\n# B\nhttps://c.example/\n")
+        self.assertEqual(
+            load_categories(self.path),
+            [
+                Category("A", (FeedConfig("https://a.example/"),)),
+                Category("B", (FeedConfig("https://b.example/"), FeedConfig("https://c.example/"))),
+            ],
+        )
+
+    def test_urls_before_first_header_are_uncategorized_and_first(self):
+        self.write("https://a.example/\n# ニュース\nhttps://b.example/\n")
+        self.assertEqual(names(self.path), [UNCATEGORIZED, "ニュース"])
+        self.assertEqual(load_categories(self.path)[0].feeds, (FeedConfig("https://a.example/"),))
+
+    def test_no_headers_means_single_uncategorized(self):
+        self.write("https://a.example/\nhttps://b.example/\n")
+        self.assertEqual(names(self.path), [UNCATEGORIZED])
+
+    def test_same_url_in_two_categories_keeps_each_patterns(self):
+        self.write(
+            "# A\nhttps://x.example/\n  !title:PR\n"
+            "# B\nhttps://x.example/\n  title:連載\n"
+        )
+        self.assertEqual(
+            load_categories(self.path),
+            [
+                Category("A", (FeedConfig("https://x.example/", (), ("PR",)),)),
+                Category("B", (FeedConfig("https://x.example/", ("連載",)),)),
+            ],
+        )
+
+    def test_duplicate_url_within_category_is_ignored(self):
+        self.write("# A\nhttps://x.example/\nhttps://y.example/\nhttps://x.example/\n  title:z\n")
+        self.assertEqual(
+            load_categories(self.path),
+            [Category("A", (FeedConfig("https://x.example/"), FeedConfig("https://y.example/")))],
+        )
+
+    def test_indented_line_right_after_header_is_ignored(self):
+        self.write("https://a.example/\n# B\n  title:x\nhttps://b.example/\n")
+        with self.assertLogs("rss_reader.config", level="WARNING"):
+            categories = load_categories(self.path)
+        self.assertEqual(
+            categories,
+            [
+                Category(UNCATEGORIZED, (FeedConfig("https://a.example/"),)),
+                Category("B", (FeedConfig("https://b.example/"),)),
+            ],
+        )
+
+    def test_unique_urls(self):
+        self.write("# A\nhttps://x.example/\nhttps://y.example/\n# B\nhttps://z.example/\nhttps://x.example/\n")
+        self.assertEqual(
+            unique_urls(load_categories(self.path)),
+            ["https://x.example/", "https://y.example/", "https://z.example/"],
+        )
 
 
 if __name__ == "__main__":

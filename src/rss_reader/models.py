@@ -22,6 +22,12 @@ class FeedConfig:
 
 
 @dataclass(frozen=True)
+class Category:
+    name: str  # shown as the tab title
+    feeds: tuple[FeedConfig, ...]
+
+
+@dataclass(frozen=True)
 class Feed:
     url: str
     title: str

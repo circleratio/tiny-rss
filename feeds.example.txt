@@ -1,22 +1,28 @@
 # feeds.txt のサンプル。このファイルを feeds.txt にコピーし、
 # 下の架空のURLを購読したいフィードのURLに書き換えてください。
-# 1行に1つのURL。# で始まる行はコメント、空行は無視されます。
+# 1行に1つのURL。空行は無視されます。
+#
+# 行頭の「# 名前」は分類の区切りで、その名前のタブが作られます。
+# 次の区切りまでに書いたURLが、そのタブに表示されます。
+# URLを1つも含まない区切り（この説明文のような行）はタブになりません。
+# 分類の途中にメモを書くときは、行頭をインデントして # を書きます。
 #
 # URLの次の行をインデントして「title:文字列」と書くと、そのフィードでは
 # タイトルにその文字列を含む記事だけを表示します（複数行書くといずれかを含む記事）。
-# 例:
-# https://magazine.example.net/feed/
-#     title:週末レシピ
-#     title:旅コラム
-#
 # 「!title:文字列」と書くと、タイトルにその文字列を含む記事を表示しません
 # （複数行書くといずれかを含む記事を除外。title: と併用すると除外が優先）。
 # 例:
-# https://tech.example.jp/rss
-#     !title:PR
-#     !title:広告
+#   https://magazine.example.net/feed/
+#       title:週末レシピ
+#       title:旅コラム
+#   https://tech.example.jp/rss
+#       !title:PR
+#       !title:広告
 
 # ニュース
 https://news.example.com/rss.xml
-# ブログ
+https://tech.example.jp/rss
+
+# 趣味
 https://blog.example.org/atom.xml
+https://magazine.example.net/feed/

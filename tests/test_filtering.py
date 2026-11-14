@@ -1,8 +1,14 @@
 import unittest
 from datetime import datetime, timezone
 
-from rss_reader.filtering import filter_articles, matches_patterns, merge_articles, sort_articles
-from rss_reader.models import Article, Feed, FeedResult
+from rss_reader.filtering import (
+    articles_by_category,
+    filter_articles,
+    matches_patterns,
+    merge_articles,
+    sort_articles,
+)
+from rss_reader.models import Article, Category, Feed, FeedConfig, FeedResult
 
 
 def art(title, link, day=None):
@@ -93,6 +99,34 @@ class FilterTest(unittest.TestCase):
 
     def test_no_match(self):
         self.assertEqual(self.run_filter("zzz"), [])
+
+
+class ArticlesByCategoryTest(unittest.TestCase):
+    def test_each_category_gets_its_own_feeds_sorted(self):
+        a_old, a_new, b1 = art("a old", "a1", 1), art("a new", "a2", 5), art("b", "b1", 3)
+        results = [
+            FeedResult("fa", Feed("fa", "FA", [a_old, a_new]), None),
+            FeedResult("fb", Feed("fb", "FB", [b1]), None),
+        ]
+        categories = [Category("B", (FeedConfig("fb"),)), Category("A", (FeedConfig("fa"),))]
+        self.assertEqual(articles_by_category(categories, results), [("B", [b1]), ("A", [a_new, a_old])])
+
+    def test_same_feed_uses_each_categories_patterns(self):
+        series, pr, other = art("連載 第1回", "u1", 3), art("PR特集", "u2", 2), art("ニュース", "u3", 1)
+        results = [FeedResult("f", Feed("f", "F", [series, pr, other]), None)]
+        categories = [
+            Category("A", (FeedConfig("f", (), ("PR",)),)),
+            Category("B", (FeedConfig("f", ("連載",)),)),
+        ]
+        self.assertEqual(
+            articles_by_category(categories, results),
+            [("A", [series, other]), ("B", [series])],
+        )
+
+    def test_failed_or_missing_feed_yields_empty_category(self):
+        results = [FeedResult("f", None, "HTTP 500")]
+        categories = [Category("A", (FeedConfig("f"),)), Category("B", (FeedConfig("missing"),))]
+        self.assertEqual(articles_by_category(categories, results), [("A", []), ("B", [])])
 
 
 if __name__ == "__main__":

@@ -7,14 +7,15 @@ import queue
 import threading
 import tkinter as tk
 import webbrowser
+from dataclasses import dataclass, field
 from pathlib import Path
 from tkinter import font as tkfont
 from tkinter import ttk
 
-from .config import FEEDS_FILENAME, load_feeds
+from .config import FEEDS_FILENAME, load_categories, unique_urls
 from .fetcher import fetch_all
-from .filtering import filter_articles, merge_articles, sort_articles
-from .models import Article, ConfigError, FeedResult
+from .filtering import articles_by_category, filter_articles
+from .models import Article, Category, ConfigError, FeedResult
 from .readstate import READ_FILENAME, ReadStore
 
 logger = logging.getLogger(__name__)
@@ -37,16 +38,24 @@ BORDER = "#3A414B"
 ACTIVE = "#353B45"  # hovered buttons and headings
 
 
+@dataclass
+class _Tab:
+    """One category page of the notebook."""
+
+    name: str
+    tree: ttk.Treeview
+    articles: list[Article]
+    visible: dict[str, Article] = field(default_factory=dict)  # iid -> shown article
+
+
 class App:
     def __init__(self, root: tk.Tk, data_dir: Path) -> None:
         self.root = root
         self.data_dir = Path(data_dir)
         self.store = ReadStore(self.data_dir / READ_FILENAME)
-        self.articles: list[Article] = []
-        self.visible: dict[str, Article] = {}
+        self.tabs: list[_Tab] = []
         self._results: queue.Queue[
-            tuple[list[FeedResult], dict[str, tuple[str, ...]], dict[str, tuple[str, ...]]]
-            | ConfigError
+            tuple[list[Category], list[FeedResult]] | ConfigError
         ] = queue.Queue()
 
         root.title("RSS Reader")
@@ -105,6 +114,13 @@ class App:
             background=[("active", BG)],
             indicatorbackground=[("pressed", ACTIVE), ("active", ACTIVE)],
         )
+        style.configure("TNotebook", background=BG)
+        style.configure("TNotebook.Tab", background=SURFACE, padding=(12, 4))
+        style.map(
+            "TNotebook.Tab",
+            background=[("selected", SELECT_BG), ("active", ACTIVE)],
+            lightcolor=[("selected", SELECT_BG)],
+        )
         style.configure("Vertical.TScrollbar", background=SURFACE, arrowcolor=FG)
         style.map("Vertical.TScrollbar", background=[("active", ACTIVE)])
         self.root.configure(background=BG)
@@ -116,8 +132,8 @@ class App:
         ttk.Label(bar, text="絞り込み:").pack(side=tk.LEFT)
         self.query = tk.StringVar()
         self.query.trace_add("write", lambda *_: self.apply_filter())
-        entry = ttk.Entry(bar, textvariable=self.query, width=30)
-        entry.pack(side=tk.LEFT, padx=(4, 12))
+        self.entry = ttk.Entry(bar, textvariable=self.query, width=30)
+        self.entry.pack(side=tk.LEFT, padx=(4, 12))
 
         self.unread_only = tk.BooleanVar(value=True)
         ttk.Checkbutton(
@@ -135,31 +151,11 @@ class App:
 
         body = ttk.Frame(self.root, padding=(8, 0, 8, 0))
         body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-        self.tree = ttk.Treeview(
-            body, columns=("date", "feed", "title"), show="headings", selectmode="browse"
-        )
-        self.tree.heading("date", text="日時", anchor=tk.W)
-        self.tree.heading("feed", text="フィード", anchor=tk.W)
-        self.tree.heading("title", text="タイトル", anchor=tk.W)
-        # Column widths follow the font size
-        date_width = self.font.measure("2026-11-08 00:00") + 2 * CELL_PADDING
-        feed_width = self.font.measure("あ" * 12) + 2 * CELL_PADDING
-        self.tree.column("date", width=date_width, minwidth=date_width, stretch=False)
-        self.tree.column("feed", width=feed_width, minwidth=feed_width // 2, stretch=False)
-        self.tree.column("title", width=feed_width * 4, minwidth=feed_width, stretch=True)
-        self.tree.tag_configure("read", foreground=READ_FG)
-        scroll = ttk.Scrollbar(body, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scroll.set)
-        scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        self.tree.bind("<ButtonRelease-1>", self._on_click)
-        self.tree.bind("<Return>", self._on_return)
-        self.tree.bind("<Button-3>", self._on_right_click)
-        # Bound on the list only, so Space/BackSpace still edit the filter entry
-        self.tree.bind("<space>", lambda _e: self.scroll_page(1))
-        self.tree.bind("<BackSpace>", lambda _e: self.scroll_page(-1))
-        entry.bind("<Escape>", lambda _e: self.tree.focus_set())
+        self.notebook = ttk.Notebook(body)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+        self.notebook.enable_traversal()  # Ctrl+Tab / Ctrl+Shift+Tab
+        self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self.entry.bind("<Escape>", lambda _e: self._focus_list())
 
         self.menu = tk.Menu(
             self.root,
@@ -172,7 +168,68 @@ class App:
         self.menu.add_command(label="ブラウザで開く", command=self._open_selected)
         self.menu.add_command(label="未読に戻す", command=self._mark_selected_unread)
 
-        self.tree.focus_set()
+    def _add_tab(self, name: str, articles: list[Article]) -> _Tab:
+        page = ttk.Frame(self.notebook)
+        tree = ttk.Treeview(
+            page, columns=("date", "feed", "title"), show="headings", selectmode="browse"
+        )
+        tree.heading("date", text="日時", anchor=tk.W)
+        tree.heading("feed", text="フィード", anchor=tk.W)
+        tree.heading("title", text="タイトル", anchor=tk.W)
+        # Column widths follow the font size
+        date_width = self.font.measure("2026-11-08 00:00") + 2 * CELL_PADDING
+        feed_width = self.font.measure("あ" * 12) + 2 * CELL_PADDING
+        tree.column("date", width=date_width, minwidth=date_width, stretch=False)
+        tree.column("feed", width=feed_width, minwidth=feed_width // 2, stretch=False)
+        tree.column("title", width=feed_width * 4, minwidth=feed_width, stretch=True)
+        tree.tag_configure("read", foreground=READ_FG)
+        scroll = ttk.Scrollbar(page, orient=tk.VERTICAL, command=tree.yview)
+        tree.configure(yscrollcommand=scroll.set)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        tree.bind("<ButtonRelease-1>", self._on_click)
+        tree.bind("<Return>", self._on_return)
+        tree.bind("<Button-3>", self._on_right_click)
+        # Bound on the list only, so Space/BackSpace still edit the filter entry
+        tree.bind("<space>", lambda _e: self.scroll_page(1))
+        tree.bind("<BackSpace>", lambda _e: self.scroll_page(-1))
+
+        self.notebook.add(page, text=name)
+        tab = _Tab(name, tree, articles)
+        self.tabs.append(tab)
+        return tab
+
+    def _show_tabs(self, tabs: list[tuple[str, list[Article]]]) -> None:
+        """Rebuild the notebook, keeping the previously selected category selected."""
+        current = self._current()
+        selected = current.name if current else None
+        old, self.tabs = self.tabs, []
+        for tab in old:
+            tab.tree.master.destroy()  # destroying the page removes its tab
+        for name, articles in tabs:
+            tab = self._add_tab(name, articles)
+            if name == selected:
+                self.notebook.select(tab.tree.master)
+        self.apply_filter()
+        if self.root.focus_get() is not self.entry:
+            self._focus_list()
+
+    def _current(self) -> _Tab | None:
+        if not self.tabs:
+            return None
+        return self.tabs[self.notebook.index("current")]
+
+    def _focus_list(self) -> None:
+        tab = self._current()
+        if tab is not None:
+            tab.tree.focus_set()
+
+    def _on_tab_changed(self, _event: tk.Event) -> None:
+        self.apply_filter()
+        # Clicking a tab focuses the tab itself, which would swallow Space/BackSpace
+        if self.root.focus_get() is not self.entry:
+            self._focus_list()
 
     # ---- feed loading -----------------------------------------------------
 
@@ -186,16 +243,14 @@ class App:
     def _worker(self, feeds_path: Path) -> None:
         # Runs in a background thread: must not touch any widget.
         try:
-            feeds = load_feeds(feeds_path)
+            categories = load_categories(feeds_path)
         except ConfigError as e:
             self._results.put(e)
             return
-        if not feeds:
+        if not categories:
             self._results.put(ConfigError(f"feeds.txt に有効なURLが登録されていません: {feeds_path}"))
             return
-        title_patterns = {f.url: f.title_patterns for f in feeds}
-        exclude_patterns = {f.url: f.exclude_patterns for f in feeds}
-        self._results.put((fetch_all([f.url for f in feeds]), title_patterns, exclude_patterns))
+        self._results.put((categories, fetch_all(unique_urls(categories))))
 
     def _poll_results(self) -> None:
         try:
@@ -205,13 +260,12 @@ class App:
             return
         self.refresh_button.state(["!disabled"])
         if isinstance(result, ConfigError):
-            self.articles = []
+            self._show_tabs([])
             message = str(result)
         else:
-            results, title_patterns, exclude_patterns = result
-            self.articles = sort_articles(merge_articles(results, title_patterns, exclude_patterns))
+            categories, results = result
+            self._show_tabs(articles_by_category(categories, results))
             message = self._summary(results)
-        self.apply_filter()
         if self._startup_notice:
             message = f"{self._startup_notice} / {message}"
             self._startup_notice = None
@@ -231,16 +285,20 @@ class App:
     # ---- list rendering ---------------------------------------------------
 
     def apply_filter(self) -> None:
+        """Redraw the selected tab only; other tabs are redrawn when selected."""
+        tab = self._current()
+        if tab is None:
+            return
         shown = filter_articles(
-            self.articles, self.query.get(), self.unread_only.get(), self.store.is_read
+            tab.articles, self.query.get(), self.unread_only.get(), self.store.is_read
         )
-        self.tree.delete(*self.tree.get_children())
-        self.visible = {}
+        tab.tree.delete(*tab.tree.get_children())
+        tab.visible = {}
         for i, article in enumerate(shown):
             iid = str(i)
-            self.visible[iid] = article
+            tab.visible[iid] = article
             date = article.published.astimezone().strftime("%Y-%m-%d %H:%M") if article.published else ""
-            self.tree.insert(
+            tab.tree.insert(
                 "", tk.END, iid=iid,
                 values=(date, article.feed_title, article.title),
                 tags=("read",) if self.store.is_read(article.link) else (),
@@ -249,7 +307,8 @@ class App:
     # ---- actions ----------------------------------------------------------
 
     def open_article(self, iid: str) -> None:
-        article = self.visible.get(iid)
+        tab = self._current()
+        article = tab.visible.get(iid) if tab else None
         if article is None:
             return
         if not webbrowser.open(article.link):
@@ -259,52 +318,67 @@ class App:
         if self.unread_only.get():
             self.apply_filter()
         else:
-            self.tree.item(iid, tags=("read",))
+            tab.tree.item(iid, tags=("read",))
 
     def mark_all_read(self) -> None:
-        self.store.mark_read(a.link for a in self.visible.values())
+        tab = self._current()
+        if tab is None:
+            return
+        self.store.mark_read(a.link for a in tab.visible.values())
         self.apply_filter()
 
     def _on_click(self, event: tk.Event) -> None:
-        if self.tree.identify_region(event.x, event.y) != "cell":
+        tree = event.widget
+        if tree.identify_region(event.x, event.y) != "cell":
             return
-        iid = self.tree.identify_row(event.y)
+        iid = tree.identify_row(event.y)
         if iid:
             self.open_article(iid)
 
     def scroll_page(self, direction: int) -> str:
         """Scroll the list by one page (1: forward, -1: back) and select the top row."""
-        self.tree.yview_scroll(direction, "pages")
-        self.tree.update_idletasks()
-        children = self.tree.get_children()
+        tab = self._current()
+        if tab is None:
+            return "break"
+        tree = tab.tree
+        tree.yview_scroll(direction, "pages")
+        tree.update_idletasks()
+        children = tree.get_children()
         if children:
             # yview()[0] is the fraction of rows scrolled past the top
-            top = children[min(round(self.tree.yview()[0] * len(children)), len(children) - 1)]
-            self.tree.selection_set(top)
-            self.tree.focus(top)
+            top = children[min(round(tree.yview()[0] * len(children)), len(children) - 1)]
+            tree.selection_set(top)
+            tree.focus(top)
         return "break"  # suppress the default Treeview key handling
 
     def _on_return(self, _event: tk.Event) -> None:
         self._open_selected()
 
     def _on_right_click(self, event: tk.Event) -> None:
-        iid = self.tree.identify_row(event.y)
+        tree = event.widget
+        iid = tree.identify_row(event.y)
         if not iid:
             return
-        self.tree.selection_set(iid)
-        self.tree.focus(iid)
+        tree.selection_set(iid)
+        tree.focus(iid)
         self.menu.tk_popup(event.x_root, event.y_root)
 
     def _open_selected(self) -> None:
-        for iid in self.tree.selection():
+        tab = self._current()
+        if tab is None:
+            return
+        for iid in tab.tree.selection():
             self.open_article(iid)
 
     def _mark_selected_unread(self) -> None:
-        for iid in self.tree.selection():
-            article = self.visible.get(iid)
+        tab = self._current()
+        if tab is None:
+            return
+        for iid in tab.tree.selection():
+            article = tab.visible.get(iid)
             if article is not None:
                 self.store.mark_unread(article.link)
-                self.tree.item(iid, tags=())
+                tab.tree.item(iid, tags=())
 
     def _report_exception(self, exc_type, exc_value, exc_tb) -> None:
         logger.error("予期しないエラー", exc_info=(exc_type, exc_value, exc_tb))

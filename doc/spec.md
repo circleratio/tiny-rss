@@ -10,7 +10,7 @@ GUI（tkinter）と、GUIに依存しないロジック層（設定読み込み�
 [feeds.txt] → config ─┐
                       ├→ fetcher（並列取得）→ parser（RSS2/RDF/Atom）→ list[Article]
                       │                                                    │
-[read.json] ↔ readstate ←──────────── gui（Treeview表示）←── filtering（絞り込み・並べ替え）
+[read.json] ↔ readstate ←──── gui（分類ごとのタブ・Treeview表示）←── filtering（分類分け・絞り込み・並べ替え）
 ```
 
 ## 2. ディレクトリ構成
@@ -65,6 +65,11 @@ class FeedConfig:                  # feeds.txt の1フィード分の設定
     exclude_patterns: tuple[str, ...] = () # タイトルにいずれかを含む記事を除外
 
 @dataclass(frozen=True)
+class Category:                    # feeds.txt の1分類分（タブ1つ）
+    name: str
+    feeds: tuple[FeedConfig, ...]
+
+@dataclass(frozen=True)
 class Feed:
     url: str
     title: str
@@ -88,15 +93,22 @@ class FeedParseError(RssReaderError): ...
 FEEDS_FILENAME = "feeds.txt"
 TITLE_PREFIX = "title:"
 EXCLUDE_TITLE_PREFIX = "!title:"
-def load_feeds(path: Path) -> list[FeedConfig]
+UNCATEGORIZED = "未分類"
+def load_categories(path: Path) -> list[Category]
+def unique_urls(categories: list[Category]) -> list[str]
 ```
 
 - UTF-8（BOM付きも可: `utf-8-sig`）で読む。
-- 各行を `strip()` した結果が空、または `#` 始まりの行は除外する（インデントの有無を問わない）。
+- `strip()` した結果が空の行は除外する。
+- `strip()` 後が `#` で始まる行:
+  - インデントされている（元の行の先頭文字がスペースまたはタブ）場合はコメントとして除外する。
+  - インデントされていない場合は区切り行。`lstrip("#").strip()` を分類名とし、以降のURLの所属分類を切り替える。直前のURL行は終わる（直後のインデント行は「直前に有効なURL行が無い」扱い）。分類名が空の場合は区切りとして扱わず、何もしない（所属分類も直前のURL行も変えない）。
 - 元の行の先頭文字がスペースまたはタブで、かつ `strip()` 後が `http://` / `https://` で始まらない行を「インデント行」、それ以外を「URL行」として扱う（インデントされたURL行を従来どおり有効にするため）。
+- 最初の区切り行より前のURLは分類 `UNCATEGORIZED` に属する。
+- 戻り値は分類が初めて現れた順（`UNCATEGORIZED` はURLが現れた時点）に並べ、URLを1件も含まない分類は除く。同じ分類名の区切りが複数回現れた場合は、最初の位置の分類にまとめる。
 - URL行:
   - `http://` / `https://` で始まらない行は無視し、`logging.warning` に出す。
-  - 重複URLは最初の1件のみ残す（順序維持）。2件目以降の重複URL行と、それに続くインデント行は無視する。
+  - 同じ分類の中の重複URLは最初の1件のみ残す（順序維持）。2件目以降の重複URL行と、それに続くインデント行は無視する。別の分類に同じURLがあるのは重複として扱わない（それぞれの分類に、それぞれのパターン付きで入る）。
 - インデント行（直前の有効なURL行に属する）:
   - `strip()` 後に `title:`（大文字・小文字を区別しない）で始まる場合、残りを `strip()` した文字列をそのフィードの `title_patterns` に追加する（記述順を維持）。
   - `strip()` 後に `!title:`（同上）で始まる場合、残りを `strip()` した文字列をそのフィードの `exclude_patterns` に追加する（記述順を維持）。`!` と `title:` の間に空白は置けない。
@@ -104,6 +116,7 @@ def load_feeds(path: Path) -> list[FeedConfig]
   - 直前のURL行が重複などで無視された場合、そのインデント行も（警告なしで）無視する。
 - ファイルが存在しない場合は `ConfigError("feeds.txt が見つかりません: <path>（feeds.example.txt をコピーして作成してください）")` を送出する。
 - 有効URLが0件の場合は空リストを返す（メッセージ表示はGUI側）。
+- `unique_urls`: 全分類のURLを重複なく、初出順に返す（取得対象の一覧。ステータスバーの件数もこの件数）。
 
 ### 3.3 `parser.py`
 
@@ -185,14 +198,18 @@ def matches_patterns(title: str, patterns: Sequence[str]) -> bool
 def sort_articles(articles: list[Article]) -> list[Article]
 def filter_articles(articles: list[Article], query: str,
                     unread_only: bool, is_read: Callable[[str], bool]) -> list[Article]
+def articles_by_category(categories: list[Category],
+                         results: list[FeedResult]) -> list[tuple[str, list[Article]]]
 ```
+
+- `articles_by_category`: 分類ごとに、その分類のフィードのURLに対応する `FeedResult` を分類内の記述順に集め、その分類の `FeedConfig` から作った `{url: title_patterns}`・`{url: exclude_patterns}` で `merge_articles` → `sort_articles` した結果を `(分類名, 記事リスト)` として、分類の順に返す。`results` に無いURLは無視する。重複リンクの除去は分類の中だけで行う（別の分類に同じ記事があっても、それぞれの分類に残る）。
 
 - `merge_articles`: 成功したフィードの記事を結合し、同じ `link` の記事は最初の1件のみ残す。
   - `title_patterns` はフィードURL（`FeedResult.url`）→ パターン列の対応。パターンが指定されたフィードの記事は `matches_patterns` が真のものだけを残す。対応が無い、またはパターン列が空のフィードは全記事を残す。
   - `exclude_patterns` も同じ形の対応。除外パターンが指定されたフィードの記事のうち、`matches_patterns` が真（いずれかを含む）のものを除外する。`title_patterns` と両方指定されている場合は、`title_patterns` に一致し、かつ `exclude_patterns` に一致しない記事だけを残す。
   - パターンによる除外は重複除去より先に行う（フィードAで除外された記事と同じリンクの記事がパターン無しのフィードBにあれば、Bの記事として表示される）。
 - `matches_patterns`: パターン列のいずれかについて `pattern.casefold()` が `title.casefold()` に含まれれば真（OR条件）。パターン列が空なら真。
-- パターンで除外された記事は一覧の元データ（`App.articles`）に入らないため、絞り込み・未読のみ表示・すべて既読にするの対象にもならない。
+- パターンで除外された記事は一覧の元データ（各タブの記事リスト）に入らないため、絞り込み・未読のみ表示・すべて既読にするの対象にもならない。
 - `sort_articles`: `published` の降順。`None` は末尾（その中では元の順序を維持）。
 - `filter_articles`: `query.strip().casefold()` が `title.casefold()` に含まれるものを残す。空文字なら全件。`unread_only` が真なら既読を除外する。
 
@@ -211,7 +228,8 @@ class App:
 ┌────────────────────────────────────────────────────────────┐
 │ 絞り込み:[__________]  ■未読のみ表示   [更新] [すべて既読にする] │
 ├────────────────────────────────────────────────────────────┤
-│ 日時             │ フィード    │ タイトル                      │  ← ttk.Treeview + 縦スクロールバー
+│ [技術ニュース] [セキュリティ] [ニュースサイト] ...              │  ← ttk.Notebook（分類ごとのタブ）
+│ 日時             │ フィード    │ タイトル                      │  ← タブごとに ttk.Treeview + 縦スクロールバー
 │ ...                                                        │
 ├────────────────────────────────────────────────────────────┤
 │ ステータス: 12件のフィードを取得しました（失敗 1件: https://...） │
@@ -234,8 +252,15 @@ class App:
 
   背景とのコントラスト比は、`FG` が 12.7:1、`READ_FG` が 5.1:1。右クリックメニュー（`tk.Menu`）は ttk の対象外なので、生成時に色を指定する。
 - 列幅はフォントから算出する: 日時 = `"2026-11-08 00:00"` の描画幅 + 余白、フィード = 全角12文字分 + 余白（固定）、タイトルは残り（伸縮）。
-- 起動時のフォーカスは Treeview に置く。スペース・BackSpace は Treeview にのみバインドし、絞り込み欄での入力を妨げない。
-- Treeview の各行の iid は表示中リストのインデックス、値として `Article` を内部の dict で保持する。
+- タブ: `ttk.Notebook` に分類ごとのページ（Frame）を追加し、ページごとに Treeview と縦スクロールバーを置く（タブを行き来してもスクロール位置が保たれる）。タブの状態は内部クラス `_Tab`（`name`・`tree`・`articles`・`visible`）で持ち、`App.tabs: list[_Tab]` に分類の順で並べる。選択中のタブは `notebook.index("current")` で求める。
+  - タブは取得結果を受け取るたびに作り直す（全ページを破棄して `articles_by_category` の結果から作成）。作り直す前に選んでいたタブの分類名を覚えておき、同じ名前のタブがあればそれを、無ければ先頭を選ぶ。
+  - `ConfigError`・有効URL 0件のときはタブを置かない（ステータスバーにメッセージを出す）。タブが無い間、一覧に対する操作は何もしない。
+  - `notebook.enable_traversal()` で Ctrl+Tab／Ctrl+Shift+Tab による切り替えを有効にする。
+  - `<<NotebookTabChanged>>` で `apply_filter` を呼び、切り替え先のタブを現在の絞り込み条件で描画し直す（他のタブで変わった既読状態も反映される）。あわせて、フォーカスが絞り込み欄に無ければ切り替え先の Treeview にフォーカスを移す（タブをクリックするとタブ自体にフォーカスが移り、スペースでのページ送りが効かなくなるため）。
+  - 配色: `TNotebook` は背景 `BG`。`TNotebook.Tab` は通常 `SURFACE`、選択中 `SELECT_BG`、マウスが乗ったとき `ACTIVE`。
+- 起動時のフォーカスは Treeview に置く。スペース・BackSpace は Treeview にのみバインドし、絞り込み欄での入力を妨げない。絞り込み欄で Esc を押したときは選択中のタブの Treeview にフォーカスを移す。
+- Treeview の各行の iid は表示中リストのインデックス、値として `Article` をタブごとの dict（`_Tab.visible`）で保持する。
+- `apply_filter` は選択中のタブだけを描画し直す。一覧に対する操作（クリック・Enter・右クリック・スペース／BackSpace・すべて既読にする）は選択中のタブの Treeview と記事を対象とする。
 - 既読行は tag `read`（`foreground=READ_FG`）を付ける。
 - 操作とイベント:
 
@@ -250,16 +275,17 @@ class App:
 | 絞り込み入力 | `StringVar.trace_add("write")` | `apply_filter` |
 | 未読のみ表示 | `BooleanVar`（初期値 `True`）の command | `apply_filter` |
 | 更新 | ボタン | `refresh_feeds` |
-| すべて既読にする | ボタン | 表示中の全記事を `mark_read`（ブラウザは開かない）→ `apply_filter` |
+| すべて既読にする | ボタン | 選択中のタブで表示中の全記事を `mark_read`（ブラウザは開かない）→ `apply_filter` |
+| タブ切り替え | クリック、Ctrl+Tab／Ctrl+Shift+Tab（`enable_traversal`）、`<<NotebookTabChanged>>` | `apply_filter`、絞り込み欄にフォーカスが無ければ Treeview にフォーカス |
 
 - バックグラウンド取得:
   - `refresh_feeds` は「更新」ボタンを無効化し、ステータスを「取得中…」にして `threading.Thread(daemon=True)` で `fetch_all` を実行する。
   - ワーカーは結果を `queue.Queue` に入れるだけで、ウィジェットには触れない（tkinter はスレッドセーフでないため）。
-  - ワーカーは `load_feeds` で得た `FeedConfig` から URL 一覧を `fetch_all` に渡し、取得結果と `{url: title_patterns}`・`{url: exclude_patterns}` の組をキューに入れる。
-  - メインスレッドは `root.after(100, ...)` でキューを監視し、結果を受け取ったら `merge_articles(results, title_patterns, exclude_patterns)` → `sort_articles` → `apply_filter`、ボタンを再度有効化する。
+  - ワーカーは `load_categories` で得た分類から `unique_urls` で求めた URL 一覧を `fetch_all` に渡し、分類と取得結果の組をキューに入れる。
+  - メインスレッドは `root.after(100, ...)` でキューを監視し、結果を受け取ったら `articles_by_category(categories, results)` でタブを作り直して `apply_filter`、ボタンを再度有効化する。
 - ステータスバーの表示:
-  - 成功時: `N件のフィードを取得しました（失敗 M件）`。失敗があれば `: URL1, URL2 …`（先頭3件まで）を続ける。失敗の詳細は `logging.warning` にも出す。
-  - `ConfigError` 時: そのメッセージを表示し、一覧は空。
+  - 成功時: `N件のフィードを取得しました（失敗 M件）`。件数は `unique_urls` のURL単位（複数の分類に書いたURLは1件）。失敗があれば `: URL1, URL2 …`（先頭3件まで）を続ける。失敗の詳細は `logging.warning` にも出す。
+  - `ConfigError` 時: そのメッセージを表示し、タブは置かない。
   - 有効URL 0件時: `feeds.txt に有効なURLが登録されていません: <path>`。
   - `ReadStore.load_warning` があれば、起動直後の取得結果メッセージの前に `<警告> / <取得結果>` の形で表示する（「取得中…」で上書きされないようにするため）。
 
@@ -316,9 +342,9 @@ def main(argv: list[str] | None = None) -> int
 ## 6. テスト方針
 
 - フレームワークは標準の `unittest`（`python -m unittest discover -s tests`）。ネットワークには接続しない。
-- `test_config.py`: コメント・空行・前後空白・BOM・非HTTP行・重複の扱い、ファイル無しで `ConfigError`、有効0件で空リスト。インデント行の `title:` パターン（スペース/タブのインデント、複数行、前後空白、`TITLE:` の大文字）、`!title:` 除外パターン（複数行、前後空白、`!TITLE:` の大文字、`title:` との併用）、パターン無しのフィードは空タプル、無視されるインデント行（URL行より前、`title:` / `!title:` 以外、`title:` / `!title:` の後が空、インデントされた `#` コメント、重複URL行に続く行）。
+- `test_config.py`: コメント・空行・前後空白・BOM・非HTTP行・重複の扱い、ファイル無しで `ConfigError`、有効0件で空リスト。分類（区切り行で分類が分かれる、分類名の前後空白・連続する `#` の除去、URLを含まない分類は除かれる、`#` だけの行は区切りにならない、同名の分類はまとまる、区切り行より前のURLは先頭の「未分類」、区切り行が無ければ「未分類」のみ、別の分類の同じURLはそれぞれのパターン付きで残る、同じ分類内の重複URLは1件、区切り行の直後のインデント行は無視、インデントされた `#` は区切りにならない）。`unique_urls` が重複なく初出順。インデント行の `title:` パターン（スペース/タブのインデント、複数行、前後空白、`TITLE:` の大文字）、`!title:` 除外パターン（複数行、前後空白、`!TITLE:` の大文字、`title:` との併用）、パターン無しのフィードは空タプル、無視されるインデント行（URL行より前、`title:` / `!title:` 以外、`title:` / `!title:` の後が空、インデントされた `#` コメント、重複URL行に続く行）。
 - `test_parser.py`: RSS 2.0 / RSS 1.0（Shift_JIS）/ Atom の各フィクスチャからフィード名・記事数・タイトル・リンク・日時が取れること。EUC-JP の変換、未知の文字コードで `FeedParseError`。Atom の複数 link から alternate を選ぶこと、相対リンクの絶対化、HTMLエンティティの展開、リンク無し記事の除外、`file:` / `javascript:` / `ftp:` など http(s) 以外のリンクの除外、壊れたXMLと未対応ルートで `FeedParseError`。`parse_date` は RFC 822（タイムゾーン有り/無し）、ISO 8601（`Z`/オフセット/日付のみ）、不正文字列で `None`。
 - `test_fetcher.py`: `urlopen` を `unittest.mock.patch` で差し替え、正常時のバイト列取得、HTTPError/URLError/タイムアウトの `FeedFetchError` 変換、`fetch_all` が一部失敗でも全件の `FeedResult` を入力順で返すこと。
 - `test_readstate.py`: 一時フォルダでの保存→再読み込み、未読に戻す、ファイル無しで空開始、壊れたJSONで `.bak` 退避と `load_warning` 設定。
-- `test_filtering.py`: 重複リンクの除去、日時降順と `None` の末尾配置、大文字小文字を区別しない部分一致、空クエリで全件、未読のみ表示との併用。フィードごとの表示パターン（一致する記事のみ残る、複数パターンのOR、大文字小文字無視、パターン無しのフィードに影響しない、除外された記事と同じリンクが別フィードにあれば残る）。除外パターン（一致する記事が除かれる、複数パターンのOR、他フィードに影響しない、`title_patterns` との併用で除外が優先）。
+- `test_filtering.py`: 重複リンクの除去、日時降順と `None` の末尾配置、大文字小文字を区別しない部分一致、空クエリで全件、未読のみ表示との併用。フィードごとの表示パターン（一致する記事のみ残る、複数パターンのOR、大文字小文字無視、パターン無しのフィードに影響しない、除外された記事と同じリンクが別フィードにあれば残る）。除外パターン（一致する記事が除かれる、複数パターンのOR、他フィードに影響しない、`title_patterns` との併用で除外が優先）。`articles_by_category`（分類ごとに自分のフィードの記事だけが日時降順で入る、分類の順序を保つ、同じURLでも分類ごとのパターンが適用される、同じ記事が別の分類にもそれぞれ残る、取得失敗のフィードは空として扱う）。
 - GUI（`gui.py`）は単体テストの対象外とし、実装計画の手動動作確認で requirement.md の使いかたと突き合わせる。
