@@ -195,6 +195,10 @@ class App:
         # Bound on the list only, so Space/BackSpace still edit the filter entry
         tree.bind("<space>", lambda _e: self.scroll_page(1))
         tree.bind("<BackSpace>", lambda _e: self.scroll_page(-1))
+        tree.bind("j", lambda _e: self.move_selection(1))
+        tree.bind("k", lambda _e: self.move_selection(-1))
+        tree.bind("r", lambda _e: self._mark_selected_read())
+        tree.bind("u", lambda _e: self._mark_selected_unread())
 
         self.notebook.add(page, text=name)
         tab = _Tab(name, tree, articles)
@@ -359,8 +363,51 @@ class App:
             tree.focus(top)
         return "break"  # suppress the default Treeview key handling
 
-    def _on_return(self, _event: tk.Event) -> None:
-        self._open_selected()
+    def move_selection(self, delta: int) -> str:
+        """Move the selection by delta rows (vi-style j/k), keeping it visible."""
+        tab = self._current()
+        if tab is None:
+            return "break"
+        children = tab.tree.get_children()
+        if not children:
+            return "break"
+        selection = tab.tree.selection()
+        if selection:
+            index = max(0, min(children.index(selection[0]) + delta, len(children) - 1))
+        else:
+            index = 0
+        self._select_row(tab, index)
+        return "break"
+
+    def _select_row(self, tab: _Tab, index: int) -> None:
+        children = tab.tree.get_children()
+        if not children:
+            return
+        iid = children[min(index, len(children) - 1)]
+        tab.tree.selection_set(iid)
+        tab.tree.focus(iid)
+        tab.tree.see(iid)
+
+    def _act_on_selected(self, action) -> str:
+        """Apply action to the selected row, keeping the cursor position for the keyboard."""
+        tab = self._current()
+        if tab is None:
+            return "break"
+        selection = tab.tree.selection()
+        if not selection:
+            return "break"
+        index = tab.tree.get_children().index(selection[0])
+        action(selection[0])
+        # With "unread only" the row disappears on redraw; reselect the same position
+        if not tab.tree.selection():
+            self._select_row(tab, index)
+        return "break"
+
+    def _mark_selected_read(self) -> str:
+        return self._act_on_selected(self.mark_article_read)
+
+    def _on_return(self, _event: tk.Event) -> str:
+        return self._act_on_selected(self.open_article)
 
     def _on_right_click(self, event: tk.Event) -> None:
         iid = event.widget.identify_row(event.y)
