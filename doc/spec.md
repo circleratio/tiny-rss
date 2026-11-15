@@ -250,7 +250,7 @@ class App:
   | `BORDER` | `#3A414B` | 枠線 |
   | `ACTIVE` | `#353B45` | マウスが乗ったボタン・見出し |
 
-  背景とのコントラスト比は、`FG` が 12.7:1、`READ_FG` が 5.1:1。右クリックメニュー（`tk.Menu`）は ttk の対象外なので、生成時に色を指定する。
+  背景とのコントラスト比は、`FG` が 12.7:1、`READ_FG` が 5.1:1。中クリックで出すメニュー（`tk.Menu`）は ttk の対象外なので、生成時に色を指定する。
 - 列幅はフォントから算出する: 日時 = `"2026-11-08 00:00"` の描画幅 + 余白、フィード = 全角12文字分 + 余白（固定）、タイトルは残り（伸縮）。
 - タブ: `ttk.Notebook` に分類ごとのページ（Frame）を追加し、ページごとに Treeview と縦スクロールバーを置く（タブを行き来してもスクロール位置が保たれる）。タブの状態は内部クラス `_Tab`（`name`・`tree`・`articles`・`visible`）で持ち、`App.tabs: list[_Tab]` に分類の順で並べる。選択中のタブは `notebook.index("current")` で求める。
   - タブは取得結果を受け取るたびに作り直す（全ページを破棄して `articles_by_category` の結果から作成）。作り直す前に選んでいたタブの分類名を覚えておき、同じ名前のタブがあればそれを、無ければ先頭を選ぶ。
@@ -260,7 +260,7 @@ class App:
   - 配色: `TNotebook` は背景 `BG`。`TNotebook.Tab` は通常 `SURFACE`、選択中 `SELECT_BG`、マウスが乗ったとき `ACTIVE`。
 - 起動時のフォーカスは Treeview に置く。スペース・BackSpace は Treeview にのみバインドし、絞り込み欄での入力を妨げない。絞り込み欄で Esc を押したときは選択中のタブの Treeview にフォーカスを移す。
 - Treeview の各行の iid は表示中リストのインデックス、値として `Article` をタブごとの dict（`_Tab.visible`）で保持する。
-- `apply_filter` は選択中のタブだけを描画し直す。一覧に対する操作（クリック・Enter・右クリック・スペース／BackSpace・すべて既読にする）は選択中のタブの Treeview と記事を対象とする。
+- `apply_filter` は選択中のタブだけを描画し直す。一覧に対する操作（クリック・Enter・右クリック・中クリック・スペース／BackSpace・すべて既読にする）は選択中のタブの Treeview と記事を対象とする。
 - 既読行は tag `read`（`foreground=READ_FG`）を付ける。
 - 操作とイベント:
 
@@ -271,7 +271,8 @@ class App:
 | スペースキー | Treeview の `<space>` | `scroll_page(1)`: `yview_scroll(1, "pages")` の後、`yview()[0]` から求めた表示先頭行を選択・フォーカスする。`"break"` を返し既定の処理を抑止 |
 | BackSpace キー | Treeview の `<BackSpace>` | `scroll_page(-1)`: 1ページ前へ。以降は同上 |
 | 絞り込み欄で Esc | Entry の `<Escape>` | 記事一覧にフォーカスを移す |
-| 右クリック | `<Button-3>` | 行を選択し、メニュー「ブラウザで開く」「未読に戻す」を表示 |
+| 右クリック | `<Button-3>` | `mark_article_read`: ブラウザは開かずに `mark_read` → その行に `read` tag を付与（「未読のみ表示」中は一覧を再描画） |
+| 中クリック | `<Button-2>` | 行を選択し、メニュー「ブラウザで開く」「未読に戻す」を表示 |
 | 絞り込み入力 | `StringVar.trace_add("write")` | `apply_filter` |
 | 未読のみ表示 | `BooleanVar`（初期値 `True`）の command | `apply_filter` |
 | 更新 | ボタン | `refresh_feeds` |

@@ -191,6 +191,7 @@ class App:
         tree.bind("<ButtonRelease-1>", self._on_click)
         tree.bind("<Return>", self._on_return)
         tree.bind("<Button-3>", self._on_right_click)
+        tree.bind("<Button-2>", self._on_middle_click)
         # Bound on the list only, so Space/BackSpace still edit the filter entry
         tree.bind("<space>", lambda _e: self.scroll_page(1))
         tree.bind("<BackSpace>", lambda _e: self.scroll_page(-1))
@@ -314,6 +315,13 @@ class App:
         if not webbrowser.open(article.link):
             self.status.set(f"ブラウザを開けませんでした: {article.link}")
             return
+        self.mark_article_read(iid)
+
+    def mark_article_read(self, iid: str) -> None:
+        tab = self._current()
+        article = tab.visible.get(iid) if tab else None
+        if article is None:
+            return
         self.store.mark_read([article.link])
         if self.unread_only.get():
             self.apply_filter()
@@ -355,6 +363,11 @@ class App:
         self._open_selected()
 
     def _on_right_click(self, event: tk.Event) -> None:
+        iid = event.widget.identify_row(event.y)
+        if iid:
+            self.mark_article_read(iid)
+
+    def _on_middle_click(self, event: tk.Event) -> None:
         tree = event.widget
         iid = tree.identify_row(event.y)
         if not iid:
