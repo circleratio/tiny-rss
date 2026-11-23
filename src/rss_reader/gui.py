@@ -156,6 +156,7 @@ class App:
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         # Clicking the already selected tab leaves focus on the notebook itself
         self.notebook.bind("c", lambda _e: self._mark_all_read_key())
+        self.notebook.bind("u", lambda _e: self.undo())
         self.entry.bind("<Escape>", lambda _e: self._focus_list())
 
         self.menu = tk.Menu(

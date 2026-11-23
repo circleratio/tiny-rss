@@ -281,7 +281,7 @@ class App:
 | r キー | Treeview の `r` | `_act_on_selected(mark_article_read)`: 選択中の記事を右クリックと同様に既読にする |
 | Ctrl+r キー | Treeview の `<Control-r>`（`r` より具体的なので `r` のバインドは呼ばれない） | `_mark_selected_unread`: 選択中の記事を未読に戻す。`"break"` を返す |
 | c キー | Treeview の `c`、Notebook の `c` | `mark_all_read`: 「すべて既読にする」ボタンと同じ。`"break"` を返す。選択中のタブをクリックし直した場合は `<<NotebookTabChanged>>` が発生せずフォーカスが Notebook に残るため、Notebook にもバインドする |
-| u キー | Treeview の `u` | `undo`: 直前の既読状態の変更を取り消す（下記）。`"break"` を返す |
+| u キー | Treeview の `u`、Notebook の `u` | `undo`: 直前の既読状態の変更を取り消す（下記）。`"break"` を返す。Notebook にもバインドする理由は c キーと同じ |
 | スペースキー | Treeview の `<space>` | `scroll_page(1)`: `yview_scroll(1, "pages")` の後、`yview()[0]` から求めた表示先頭行を選択・フォーカスする。`"break"` を返し既定の処理を抑止 |
 | BackSpace キー | Treeview の `<BackSpace>` | `scroll_page(-1)`: 1ページ前へ。以降は同上 |
 | 絞り込み欄で Esc | Entry の `<Escape>` | 記事一覧にフォーカスを移す |
