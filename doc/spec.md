@@ -262,10 +262,11 @@ class App:
 - タブ: `ttk.Notebook` に分類ごとのページ（Frame）を追加し、ページごとに Treeview と縦スクロールバーを置く（タブを行き来してもスクロール位置が保たれる）。タブの状態は内部クラス `_Tab`（`name`・`tree`・`articles`・`visible`）で持ち、`App.tabs: list[_Tab]` に分類の順で並べる。選択中のタブは `notebook.index("current")` で求める。
   - タブは取得結果を受け取るたびに作り直す（全ページを破棄して `articles_by_category` の結果から作成）。作り直す前に選んでいたタブの分類名を覚えておき、同じ名前のタブがあればそれを、無ければ先頭を選ぶ。
   - `ConfigError`・有効URL 0件のときはタブを置かない（ステータスバーにメッセージを出す）。タブが無い間、一覧に対する操作は何もしない。
-  - `notebook.enable_traversal()` で Ctrl+Tab／Ctrl+Shift+Tab による切り替えを有効にする。
+  - キーでの切り替えは Treeview の `<Tab>` / `<Shift-Tab>` に `switch_tab(±1)` をバインドして行う。`switch_tab` は `(現在の番号 + delta) % タブ数` のタブを `notebook.select` で選び（端では循環）、`"break"` を返して Tk 既定のフォーカス移動（`all` の `<Tab>` バインド）を抑止する。タブが1つ以下なら何もしない。
+  - `notebook.enable_traversal()` は呼ばない（Ctrl+Tab／Ctrl+Shift+Tab を割り当てないため）。修飾キーの多いイベントにも `<Tab>` のバインドが一致してしまうので、Treeview の `<Control-Tab>` / `<Control-Shift-Tab>` には何もせず `"break"` を返すハンドラをバインドする。絞り込み欄のバインドは変えない（Tab・Shift+Tab は Tk 既定のフォーカス移動）。
   - `<<NotebookTabChanged>>` で `apply_filter` を呼び、切り替え先のタブを現在の絞り込み条件で描画し直す（他のタブで変わった既読状態も反映される）。あわせて、フォーカスが絞り込み欄に無ければ切り替え先の Treeview にフォーカスを移す（タブをクリックするとタブ自体にフォーカスが移り、スペースでのページ送りが効かなくなるため）。
   - 配色: `TNotebook` は背景 `BG`。`TNotebook.Tab` は通常 `SURFACE`、選択中 `SELECT_BG`、マウスが乗ったとき `ACTIVE`。
-- 起動時のフォーカスは Treeview に置く。スペース・BackSpace・j・k・r・u・c・Ctrl+r は Treeview にのみバインドし、絞り込み欄での入力を妨げない。絞り込み欄で Esc を押したときは選択中のタブの Treeview にフォーカスを移す。
+- 起動時のフォーカスは Treeview に置く。スペース・BackSpace・j・k・r・u・c・Ctrl+r・Tab・Shift+Tab は Treeview にのみバインドし、絞り込み欄での入力を妨げない。絞り込み欄で Esc を押したときは選択中のタブの Treeview にフォーカスを移す。
 - Treeview の各行の iid は表示中リストのインデックス、値として `Article` をタブごとの dict（`_Tab.visible`）で保持する。
 - `apply_filter` は選択中のタブだけを描画し直す。一覧に対する操作（クリック・Enter・j／k・r・Ctrl+r・u・c・右クリック・中クリック・スペース／BackSpace・すべて既読にする）は選択中のタブの Treeview と記事を対象とする。
 - 既読行は tag `read`（`foreground=READ_FG`）を付ける。
@@ -290,7 +291,7 @@ class App:
 | 未読のみ表示 | `BooleanVar`（初期値 `True`）の command | `apply_filter` |
 | 更新 | ボタン | `refresh_feeds` |
 | すべて既読にする | ボタン | 選択中のタブで表示中の全記事を `mark_read`（ブラウザは開かない）→ `apply_filter` |
-| タブ切り替え | クリック、Ctrl+Tab／Ctrl+Shift+Tab（`enable_traversal`）、`<<NotebookTabChanged>>` | `apply_filter`、絞り込み欄にフォーカスが無ければ Treeview にフォーカス |
+| タブ切り替え | クリック、Treeview の `<Tab>` / `<Shift-Tab>`（`switch_tab(±1)`）、`<<NotebookTabChanged>>` | `apply_filter`、絞り込み欄にフォーカスが無ければ Treeview にフォーカス |
 
 - 取り消し（`App.undo`）:
   - `ReadStore.undo()` が `None` なら、ステータスバーに「取り消す操作がありません」を表示して終わる。

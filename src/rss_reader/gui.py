@@ -153,7 +153,6 @@ class App:
         body.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self.notebook = ttk.Notebook(body)
         self.notebook.pack(fill=tk.BOTH, expand=True)
-        self.notebook.enable_traversal()  # Ctrl+Tab / Ctrl+Shift+Tab
         self.notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self.entry.bind("<Escape>", lambda _e: self._focus_list())
 
@@ -202,6 +201,11 @@ class App:
         tree.bind("<Control-r>", lambda _e: self._mark_selected_unread())
         tree.bind("u", lambda _e: self.undo())
         tree.bind("c", lambda _e: self._mark_all_read_key())
+        tree.bind("<Tab>", lambda _e: self.switch_tab(1))
+        tree.bind("<Shift-Tab>", lambda _e: self.switch_tab(-1))
+        # Ctrl+Tab would otherwise match the <Tab> binding above; leave it unassigned
+        tree.bind("<Control-Tab>", lambda _e: "break")
+        tree.bind("<Control-Shift-Tab>", lambda _e: "break")
 
         self.notebook.add(page, text=name)
         tab = _Tab(name, tree, articles)
@@ -232,6 +236,13 @@ class App:
         tab = self._current()
         if tab is not None:
             tab.tree.focus_set()
+
+    def switch_tab(self, delta: int) -> str:
+        """Select the next (1) or previous (-1) category tab, wrapping around."""
+        if len(self.tabs) > 1:
+            index = (self.notebook.index("current") + delta) % len(self.tabs)
+            self.notebook.select(index)
+        return "break"  # suppress the default focus traversal
 
     def _on_tab_changed(self, _event: tk.Event) -> None:
         self.apply_filter()
