@@ -198,7 +198,9 @@ class App:
         tree.bind("j", lambda _e: self.move_selection(1))
         tree.bind("k", lambda _e: self.move_selection(-1))
         tree.bind("r", lambda _e: self._mark_selected_read())
-        tree.bind("u", lambda _e: self._mark_selected_unread())
+        # <Control-r> is more specific than "r", so Ctrl+r does not also mark read
+        tree.bind("<Control-r>", lambda _e: self._mark_selected_unread())
+        tree.bind("u", lambda _e: self.undo())
 
         self.notebook.add(page, text=name)
         tab = _Tab(name, tree, articles)
@@ -430,15 +432,43 @@ class App:
         for iid in tab.tree.selection():
             self.open_article(iid)
 
-    def _mark_selected_unread(self) -> None:
+    def _mark_selected_unread(self) -> str:
         tab = self._current()
         if tab is None:
-            return
+            return "break"
         for iid in tab.tree.selection():
             article = tab.visible.get(iid)
             if article is not None:
                 self.store.mark_unread(article.link)
                 tab.tree.item(iid, tags=())
+        return "break"
+
+    def undo(self) -> str:
+        """Revert the latest read/unread change and select the restored article."""
+        links = self.store.undo()
+        if links is None:
+            self.status.set("取り消す操作がありません")
+            return "break"
+        tab = self._current()
+        if tab is not None:
+            tree = tab.tree
+            selection = tree.selection()
+            prev_link = tab.visible[selection[0]].link if selection else None
+            prev_index = tree.get_children().index(selection[0]) if selection else None
+            self.apply_filter()
+            restored = set(links)
+            target = next((iid for iid, a in tab.visible.items() if a.link in restored), None)
+            if target is None and prev_link is not None:
+                # Restored articles are not shown here: keep the previous selection
+                target = next((iid for iid, a in tab.visible.items() if a.link == prev_link), None)
+            if target is not None:
+                tree.selection_set(target)
+                tree.focus(target)
+                tree.see(target)
+            elif prev_index is not None:
+                self._select_row(tab, prev_index)
+        self.status.set(f"既読状態の変更を取り消しました（{len(links)}件）")
+        return "break"
 
     def _report_exception(self, exc_type, exc_value, exc_tb) -> None:
         logger.error("予期しないエラー", exc_info=(exc_type, exc_value, exc_tb))

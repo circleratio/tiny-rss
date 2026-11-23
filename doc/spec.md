@@ -172,10 +172,17 @@ READ_FILENAME = "read.json"
 class ReadStore:
     def __init__(self, path: Path) -> None   # 読み込みまで行う
     def is_read(self, link: str) -> bool
-    def mark_read(self, links: Iterable[str]) -> None   # 変更後すぐ保存
-    def mark_unread(self, link: str) -> None            # 変更後すぐ保存
+    def mark_read(self, links: Iterable[str]) -> list[str]  # 変更後すぐ保存。新たに既読にしたリンクを返す
+    def mark_unread(self, link: str) -> bool                # 変更後すぐ保存。未読に変わったら True
+    def undo(self) -> list[str] | None       # 直前の変更を取り消して保存。戻したリンクを返す（履歴が空なら None）
     load_warning: str | None                 # 読み込み時の警告（GUIのステータスに表示）
 ```
+
+- 取り消し履歴（Undo）:
+  - `mark_read` / `mark_unread` は、状態が実際に変わったリンクがあるときだけ、1回の呼び出しを1件の履歴としてスタック（`list`）に積む。変化が無ければ積まない（既読の記事を開き直した場合など）。
+  - 履歴の1件は `dict[str, str | None]`（リンク → 変更前の値。`None` は未読だったことを表し、文字列は既読にした日時）。`undo` は最後の1件を取り出し、`None` のリンクは既読から外し、文字列のリンクはその日時のまま既読に戻す（既読日時も元に戻る）。
+  - 履歴はメモリ上のみで保持し、`read.json` には保存しない（再起動で消える）。件数の上限は設けない（1操作あたりリンク数件〜表示中の記事数で、起動中に溜まる量は小さいため）。Redo は持たない。
+  - 取り消しの結果は通常の変更と同様にすぐ保存する。
 
 - ファイル形式:
 
@@ -258,9 +265,9 @@ class App:
   - `notebook.enable_traversal()` で Ctrl+Tab／Ctrl+Shift+Tab による切り替えを有効にする。
   - `<<NotebookTabChanged>>` で `apply_filter` を呼び、切り替え先のタブを現在の絞り込み条件で描画し直す（他のタブで変わった既読状態も反映される）。あわせて、フォーカスが絞り込み欄に無ければ切り替え先の Treeview にフォーカスを移す（タブをクリックするとタブ自体にフォーカスが移り、スペースでのページ送りが効かなくなるため）。
   - 配色: `TNotebook` は背景 `BG`。`TNotebook.Tab` は通常 `SURFACE`、選択中 `SELECT_BG`、マウスが乗ったとき `ACTIVE`。
-- 起動時のフォーカスは Treeview に置く。スペース・BackSpace・j・k・r・u は Treeview にのみバインドし、絞り込み欄での入力を妨げない。絞り込み欄で Esc を押したときは選択中のタブの Treeview にフォーカスを移す。
+- 起動時のフォーカスは Treeview に置く。スペース・BackSpace・j・k・r・u・Ctrl+r は Treeview にのみバインドし、絞り込み欄での入力を妨げない。絞り込み欄で Esc を押したときは選択中のタブの Treeview にフォーカスを移す。
 - Treeview の各行の iid は表示中リストのインデックス、値として `Article` をタブごとの dict（`_Tab.visible`）で保持する。
-- `apply_filter` は選択中のタブだけを描画し直す。一覧に対する操作（クリック・Enter・j／k・r／u・右クリック・中クリック・スペース／BackSpace・すべて既読にする）は選択中のタブの Treeview と記事を対象とする。
+- `apply_filter` は選択中のタブだけを描画し直す。一覧に対する操作（クリック・Enter・j／k・r・Ctrl+r・u・右クリック・中クリック・スペース／BackSpace・すべて既読にする）は選択中のタブの Treeview と記事を対象とする。
 - 既読行は tag `read`（`foreground=READ_FG`）を付ける。
 - `_act_on_selected(action)` は選択行に `action(iid)` を実行し、「未読のみ表示」による再描画で選択が消えた場合は、元と同じ位置の行（末尾を超える場合は最終行）を選択し直す（キーボードで連続して読み進められるようにするため）。
 - 操作とイベント:
@@ -271,7 +278,8 @@ class App:
 | Enter キー | `<Return>` | `_act_on_selected(open_article)`: 選択中の記事をクリックと同様に開く |
 | j／k キー | Treeview の `j` / `k` | `move_selection(±1)`: 選択を1行下／上へ移し（端で止まる。未選択なら先頭行）、`see` で表示する。`"break"` を返す |
 | r キー | Treeview の `r` | `_act_on_selected(mark_article_read)`: 選択中の記事を右クリックと同様に既読にする |
-| u キー | Treeview の `u` | `_mark_selected_unread`: 選択中の記事を未読に戻す |
+| Ctrl+r キー | Treeview の `<Control-r>`（`r` より具体的なので `r` のバインドは呼ばれない） | `_mark_selected_unread`: 選択中の記事を未読に戻す。`"break"` を返す |
+| u キー | Treeview の `u` | `undo`: 直前の既読状態の変更を取り消す（下記）。`"break"` を返す |
 | スペースキー | Treeview の `<space>` | `scroll_page(1)`: `yview_scroll(1, "pages")` の後、`yview()[0]` から求めた表示先頭行を選択・フォーカスする。`"break"` を返し既定の処理を抑止 |
 | BackSpace キー | Treeview の `<BackSpace>` | `scroll_page(-1)`: 1ページ前へ。以降は同上 |
 | 絞り込み欄で Esc | Entry の `<Escape>` | 記事一覧にフォーカスを移す |
@@ -283,6 +291,12 @@ class App:
 | すべて既読にする | ボタン | 選択中のタブで表示中の全記事を `mark_read`（ブラウザは開かない）→ `apply_filter` |
 | タブ切り替え | クリック、Ctrl+Tab／Ctrl+Shift+Tab（`enable_traversal`）、`<<NotebookTabChanged>>` | `apply_filter`、絞り込み欄にフォーカスが無ければ Treeview にフォーカス |
 
+- 取り消し（`App.undo`）:
+  - `ReadStore.undo()` が `None` なら、ステータスバーに「取り消す操作がありません」を表示して終わる。
+  - 戻したリンクがあれば、取り消し前に選択していた記事のリンクと位置を覚えてから `apply_filter` で選択中のタブを描画し直す（「未読のみ表示」中は、未読に戻った記事が現れ、既読に戻った記事が消える）。
+  - 描画後、表示中の行のうちリンクが戻したリンクに含まれる最も上の行を選択し `see` で表示する。該当行が無ければ（別のタブの記事だった、絞り込みで隠れている等）、元の記事がまだ表示されていればその行を、消えていれば元と同じ位置の行を選択し直す（選択を変えない）。
+  - ステータスバーに「既読状態の変更を取り消しました（N件）」を表示する。
+  - 履歴はタブの作り直し（「更新」）とは無関係に `ReadStore` が持つので、再取得後も取り消せる。
 - バックグラウンド取得:
   - `refresh_feeds` は「更新」ボタンを無効化し、ステータスを「取得中…」にして `threading.Thread(daemon=True)` で `fetch_all` を実行する。
   - ワーカーは結果を `queue.Queue` に入れるだけで、ウィジェットには触れない（tkinter はスレッドセーフでないため）。
@@ -350,6 +364,6 @@ def main(argv: list[str] | None = None) -> int
 - `test_config.py`: コメント・空行・前後空白・BOM・非HTTP行・重複の扱い、ファイル無しで `ConfigError`、有効0件で空リスト。分類（区切り行で分類が分かれる、分類名の前後空白・連続する `#` の除去、URLを含まない分類は除かれる、`#` だけの行は区切りにならない、同名の分類はまとまる、区切り行より前のURLは先頭の「未分類」、区切り行が無ければ「未分類」のみ、別の分類の同じURLはそれぞれのパターン付きで残る、同じ分類内の重複URLは1件、区切り行の直後のインデント行は無視、インデントされた `#` は区切りにならない）。`unique_urls` が重複なく初出順。インデント行の `title:` パターン（スペース/タブのインデント、複数行、前後空白、`TITLE:` の大文字）、`!title:` 除外パターン（複数行、前後空白、`!TITLE:` の大文字、`title:` との併用）、パターン無しのフィードは空タプル、無視されるインデント行（URL行より前、`title:` / `!title:` 以外、`title:` / `!title:` の後が空、インデントされた `#` コメント、重複URL行に続く行）。
 - `test_parser.py`: RSS 2.0 / RSS 1.0（Shift_JIS）/ Atom の各フィクスチャからフィード名・記事数・タイトル・リンク・日時が取れること。EUC-JP の変換、未知の文字コードで `FeedParseError`。Atom の複数 link から alternate を選ぶこと、相対リンクの絶対化、HTMLエンティティの展開、リンク無し記事の除外、`file:` / `javascript:` / `ftp:` など http(s) 以外のリンクの除外、壊れたXMLと未対応ルートで `FeedParseError`。`parse_date` は RFC 822（タイムゾーン有り/無し）、ISO 8601（`Z`/オフセット/日付のみ）、不正文字列で `None`。
 - `test_fetcher.py`: `urlopen` を `unittest.mock.patch` で差し替え、正常時のバイト列取得、HTTPError/URLError/タイムアウトの `FeedFetchError` 変換、`fetch_all` が一部失敗でも全件の `FeedResult` を入力順で返すこと。
-- `test_readstate.py`: 一時フォルダでの保存→再読み込み、未読に戻す、ファイル無しで空開始、壊れたJSONで `.bak` 退避と `load_warning` 設定。
+- `test_readstate.py`: 一時フォルダでの保存→再読み込み、未読に戻す、ファイル無しで空開始、壊れたJSONで `.bak` 退避と `load_warning` 設定。取り消し（既読化の取り消しで未読に戻りファイルにも反映、未読化の取り消しで元の既読日時のまま既読に戻る、複数リンクの `mark_read` は1回でまとめて戻る、新しい順に1件ずつさかのぼる、状態が変わらない操作は履歴に積まれない、履歴が空なら `None`、`mark_read` / `mark_unread` の戻り値、再読み込みした `ReadStore` は履歴を持たない）。
 - `test_filtering.py`: 重複リンクの除去、日時降順と `None` の末尾配置、大文字小文字を区別しない部分一致、空クエリで全件、未読のみ表示との併用。フィードごとの表示パターン（一致する記事のみ残る、複数パターンのOR、大文字小文字無視、パターン無しのフィードに影響しない、除外された記事と同じリンクが別フィードにあれば残る）。除外パターン（一致する記事が除かれる、複数パターンのOR、他フィードに影響しない、`title_patterns` との併用で除外が優先）。`articles_by_category`（分類ごとに自分のフィードの記事だけが日時降順で入る、分類の順序を保つ、同じURLでも分類ごとのパターンが適用される、同じ記事が別の分類にもそれぞれ残る、取得失敗のフィードは空として扱う）。
 - GUI（`gui.py`）は単体テストの対象外とし、実装計画の手動動作確認で requirement.md の使いかたと突き合わせる。

@@ -23,24 +23,47 @@ class ReadStore:
         self.path = Path(path)
         self.load_warning: str | None = None
         self._read: dict[str, str] = {}
+        # Undo stack, in memory only: link -> previous value (None: was unread)
+        self._history: list[dict[str, str | None]] = []
         self._load()
 
     def is_read(self, link: str) -> bool:
         return link in self._read
 
-    def mark_read(self, links: Iterable[str]) -> None:
+    def mark_read(self, links: Iterable[str]) -> list[str]:
+        """Mark links read; return the links that were unread before."""
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        changed = False
+        changed: list[str] = []
         for link in links:
             if link not in self._read:
                 self._read[link] = now
-                changed = True
+                changed.append(link)
         if changed:
+            self._history.append(dict.fromkeys(changed))
             self._save()
+        return changed
 
-    def mark_unread(self, link: str) -> None:
-        if self._read.pop(link, None) is not None:
-            self._save()
+    def mark_unread(self, link: str) -> bool:
+        """Mark link unread; return True if it was read before."""
+        previous = self._read.pop(link, None)
+        if previous is None:
+            return False
+        self._history.append({link: previous})
+        self._save()
+        return True
+
+    def undo(self) -> list[str] | None:
+        """Revert the latest change; return its links, or None if there is none."""
+        if not self._history:
+            return None
+        change = self._history.pop()
+        for link, previous in change.items():
+            if previous is None:
+                self._read.pop(link, None)
+            else:
+                self._read[link] = previous  # restores the original read time too
+        self._save()
+        return list(change)
 
     def _load(self) -> None:
         try:
