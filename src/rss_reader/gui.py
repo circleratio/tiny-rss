@@ -201,6 +201,7 @@ class App:
         # <Control-r> is more specific than "r", so Ctrl+r does not also mark read
         tree.bind("<Control-r>", lambda _e: self._mark_selected_unread())
         tree.bind("u", lambda _e: self.undo())
+        tree.bind("c", lambda _e: self._mark_all_read_key())
 
         self.notebook.add(page, text=name)
         tab = _Tab(name, tree, articles)
@@ -340,6 +341,10 @@ class App:
             return
         self.store.mark_read(a.link for a in tab.visible.values())
         self.apply_filter()
+
+    def _mark_all_read_key(self) -> str:
+        self.mark_all_read()
+        return "break"
 
     def _on_click(self, event: tk.Event) -> None:
         tree = event.widget

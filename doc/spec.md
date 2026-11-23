@@ -265,9 +265,9 @@ class App:
   - `notebook.enable_traversal()` で Ctrl+Tab／Ctrl+Shift+Tab による切り替えを有効にする。
   - `<<NotebookTabChanged>>` で `apply_filter` を呼び、切り替え先のタブを現在の絞り込み条件で描画し直す（他のタブで変わった既読状態も反映される）。あわせて、フォーカスが絞り込み欄に無ければ切り替え先の Treeview にフォーカスを移す（タブをクリックするとタブ自体にフォーカスが移り、スペースでのページ送りが効かなくなるため）。
   - 配色: `TNotebook` は背景 `BG`。`TNotebook.Tab` は通常 `SURFACE`、選択中 `SELECT_BG`、マウスが乗ったとき `ACTIVE`。
-- 起動時のフォーカスは Treeview に置く。スペース・BackSpace・j・k・r・u・Ctrl+r は Treeview にのみバインドし、絞り込み欄での入力を妨げない。絞り込み欄で Esc を押したときは選択中のタブの Treeview にフォーカスを移す。
+- 起動時のフォーカスは Treeview に置く。スペース・BackSpace・j・k・r・u・c・Ctrl+r は Treeview にのみバインドし、絞り込み欄での入力を妨げない。絞り込み欄で Esc を押したときは選択中のタブの Treeview にフォーカスを移す。
 - Treeview の各行の iid は表示中リストのインデックス、値として `Article` をタブごとの dict（`_Tab.visible`）で保持する。
-- `apply_filter` は選択中のタブだけを描画し直す。一覧に対する操作（クリック・Enter・j／k・r・Ctrl+r・u・右クリック・中クリック・スペース／BackSpace・すべて既読にする）は選択中のタブの Treeview と記事を対象とする。
+- `apply_filter` は選択中のタブだけを描画し直す。一覧に対する操作（クリック・Enter・j／k・r・Ctrl+r・u・c・右クリック・中クリック・スペース／BackSpace・すべて既読にする）は選択中のタブの Treeview と記事を対象とする。
 - 既読行は tag `read`（`foreground=READ_FG`）を付ける。
 - `_act_on_selected(action)` は選択行に `action(iid)` を実行し、「未読のみ表示」による再描画で選択が消えた場合は、元と同じ位置の行（末尾を超える場合は最終行）を選択し直す（キーボードで連続して読み進められるようにするため）。
 - 操作とイベント:
@@ -279,6 +279,7 @@ class App:
 | j／k キー | Treeview の `j` / `k` | `move_selection(±1)`: 選択を1行下／上へ移し（端で止まる。未選択なら先頭行）、`see` で表示する。`"break"` を返す |
 | r キー | Treeview の `r` | `_act_on_selected(mark_article_read)`: 選択中の記事を右クリックと同様に既読にする |
 | Ctrl+r キー | Treeview の `<Control-r>`（`r` より具体的なので `r` のバインドは呼ばれない） | `_mark_selected_unread`: 選択中の記事を未読に戻す。`"break"` を返す |
+| c キー | Treeview の `c` | `mark_all_read`: 「すべて既読にする」ボタンと同じ。`"break"` を返す |
 | u キー | Treeview の `u` | `undo`: 直前の既読状態の変更を取り消す（下記）。`"break"` を返す |
 | スペースキー | Treeview の `<space>` | `scroll_page(1)`: `yview_scroll(1, "pages")` の後、`yview()[0]` から求めた表示先頭行を選択・フォーカスする。`"break"` を返し既定の処理を抑止 |
 | BackSpace キー | Treeview の `<BackSpace>` | `scroll_page(-1)`: 1ページ前へ。以降は同上 |
